@@ -1,0 +1,45 @@
+// QueryImpl.i.dfy
+module QueryImpl {
+  method queryIterate(k: ImplConstants, s: ImplVariables, key: Key, msg: Message, ref: BT.G.Reference, io: DiskIOHandler, counter: uint64)
+      returns (res: Option<Value>)
+    modifies io, s.Repr()
+  {
+    if counter == 0 {
+      res := None;
+      return;
+    }
+    var nodeOpt: Option<Node> := s.cache.GetOpt(ref);
+    if nodeOpt.None? {
+      PageInNodeReqOrMakeRoom(k, s, io, ref);
+      res := None;
+      return;
+    } else {
+      var node: Node := nodeOpt.value;
+      s.lru.Use(ref);
+      var r: uint64 := Pivots.ComputeRoute(node.pivotTable, key);
+      var bucket: BucketImpl.MutBucket := node.buckets[r];
+      var kmtMsg: Option<Message> := bucket.Query(key);
+      var newmsg: Message := if kmtMsg.Some? then ValueMessage.Merge(msg, kmtMsg.value) else msg;
+      if newmsg.Define? {
+        res := Some(newmsg.value);
+        return;
+      } else {
+        if node.children.Some? {
+          res := queryIterate(k, s, key, newmsg, node.children.value[r], io, counter - 1);
+        } else {
+          res := Some(ValueType.DefaultValue());
+          return;
+        }
+      }
+    }
+  }
+  method query(k: ImplConstants, s: ImplVariables, io: DiskIOHandler, key: Key)
+      returns (res: Option<Value>)
+    modifies io, s.Repr()
+  {
+    var ref: Reference := BT.G.Root();
+    var msg: Message := ValueMessage.IdentityMessage();
+    var counter: uint64 := 40;
+    res := queryIterate(k, s, key, msg, ref, io, counter);
+  }
+}

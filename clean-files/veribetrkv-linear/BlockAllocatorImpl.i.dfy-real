@@ -1,0 +1,153 @@
+// BlockAllocatorImpl.i.dfy
+module BlockAllocatorImpl {
+  datatype BlockAllocator = BlockAllocator(ephemeral: BitmapImpl.Bitmap, frozen: lOption<BitmapImpl.Bitmap>, persistent: BitmapImpl.Bitmap, outstanding: BitmapImpl.Bitmap, full: BitmapImpl.Bitmap) {
+    method DebugAccumulate() returns (acc: DebugAccumulator.DebugAccumulator)
+    {
+      acc := DebugAccumulator.EmptyAccumulator();
+      var r: DebugAccumulator.DebugAccumulator := ephemeral.DebugAccumulate();
+      var a: AccRec := new DebugAccumulator.AccRec.Index(r);
+      acc := DebugAccumulator.AccPut(acc, "ephemeral", a);
+      if frozen.lSome? {
+        r := frozen.value.DebugAccumulate();
+      } else {
+        r := DebugAccumulator.EmptyAccumulator();
+      }
+      a := new DebugAccumulator.AccRec.Index(r);
+      acc := DebugAccumulator.AccPut(acc, "frozen", a);
+      r := persistent.DebugAccumulate();
+      a := new DebugAccumulator.AccRec.Index(r);
+      acc := DebugAccumulator.AccPut(acc, "persistent", a);
+      r := outstanding.DebugAccumulate();
+      a := new DebugAccumulator.AccRec.Index(r);
+      acc := DebugAccumulator.AccPut(acc, "outstanding", a);
+      r := full.DebugAccumulate();
+      a := new DebugAccumulator.AccRec.Index(r);
+      acc := DebugAccumulator.AccPut(acc, "full", a);
+    }
+    static method Constructor(bm: BitmapImpl.Bitmap) returns (ba: BlockAllocator)
+    {
+      var per: Bitmap := BitmapImpl.Bitmap.CloneConstructor(bm);
+      var out: Bitmap := BitmapImpl.Bitmap.Constructor(NumBlocksUint64());
+      var ful: Bitmap := BitmapImpl.Bitmap.CloneConstructor(bm);
+      ba := BlockAllocator(bm, lNone, per, out, ful);
+    }
+    method Alloc() returns (res: Option<uint64>)
+    {
+      res := full.Alloc();
+    }
+    method MarkUsedEphemeral(inout old_self: BlockAllocator, i: uint64) returns (self: BlockAllocator)
+    {
+      self := old_self;
+      var _inout_tmp_0: Bitmap;
+      _inout_tmp_0 := self.ephemeral.Set(inout self.ephemeral, i);
+      self := self.(ephemeral := _inout_tmp_0);
+      var _inout_tmp_1: Bitmap;
+      _inout_tmp_1 := self.full.Set(inout self.full, i);
+      self := self.(full := _inout_tmp_1);
+    }
+    method MarkUsedFrozen(inout old_self: BlockAllocator, i: uint64) returns (self: BlockAllocator)
+    {
+      self := old_self;
+      var _inout_tmp_0: Bitmap;
+      _inout_tmp_0 := self.frozen.value.Set(inout self.frozen.value, i);
+      self := self.(frozen := self.frozen.(value := _inout_tmp_0));
+      var _inout_tmp_1: Bitmap;
+      _inout_tmp_1 := self.full.Set(inout self.full, i);
+      self := self.(full := _inout_tmp_1);
+    }
+    method MarkUsedOutstanding(inout old_self: BlockAllocator, i: uint64) returns (self: BlockAllocator)
+    {
+      self := old_self;
+      var _inout_tmp_0: Bitmap;
+      _inout_tmp_0 := self.outstanding.Set(inout self.outstanding, i);
+      self := self.(outstanding := _inout_tmp_0);
+      var _inout_tmp_1: Bitmap;
+      _inout_tmp_1 := self.full.Set(inout self.full, i);
+      self := self.(full := _inout_tmp_1);
+    }
+    method MarkFreeOutstanding(inout old_self: BlockAllocator, i: uint64) returns (self: BlockAllocator)
+    {
+      self := old_self;
+      var _inout_tmp_1: Bitmap;
+      _inout_tmp_1 := self.outstanding.Unset(inout self.outstanding, i);
+      self := self.(outstanding := _inout_tmp_1);
+      var b0: bool := false;
+      if self.frozen.lSome? {
+        b0 := self.frozen.value.GetIsSet(i);
+      }
+      if !b0 {
+        var b1: bool := self.ephemeral.GetIsSet(i);
+        if !b1 {
+          var b2: bool := self.persistent.GetIsSet(i);
+          if !b2 {
+            var _inout_tmp_0: Bitmap;
+            _inout_tmp_0 := self.full.Unset(inout self.full, i);
+            self := self.(full := _inout_tmp_0);
+          }
+        }
+      }
+    }
+    method MarkFreeEphemeral(inout old_self: BlockAllocator, i: uint64) returns (self: BlockAllocator)
+    {
+      self := old_self;
+      var _inout_tmp_1: Bitmap;
+      _inout_tmp_1 := self.ephemeral.Unset(inout self.ephemeral, i);
+      self := self.(ephemeral := _inout_tmp_1);
+      var b0: bool := false;
+      if self.frozen.lSome? {
+        b0 := self.frozen.value.GetIsSet(i);
+      }
+      if !b0 {
+        var b1: bool := self.outstanding.GetIsSet(i);
+        if !b1 {
+          var b2: bool := self.persistent.GetIsSet(i);
+          if !b2 {
+            var _inout_tmp_0: Bitmap;
+            _inout_tmp_0 := self.full.Unset(inout self.full, i);
+            self := self.(full := _inout_tmp_0);
+          }
+        }
+      }
+    }
+    method MoveFrozenToPersistent(inout old_self: BlockAllocator) returns (self: BlockAllocator)
+    {
+      self := old_self;
+      var BlockAllocator(eph: BitmapImpl.Bitmap, fro: lOption<BitmapImpl.Bitmap>, pre: BitmapImpl.Bitmap, out: BitmapImpl.Bitmap, full: BitmapImpl.Bitmap) := self;
+      var frozen_val: BitmapImpl.Bitmap := unwrap_value(fro);
+      var fo: Bitmap := BitmapImpl.Bitmap.UnionConstructor(frozen_val, out);
+      var fu: Bitmap := BitmapImpl.Bitmap.UnionConstructor(eph, fo);
+      self := BlockAllocator(eph, lNone, frozen_val, out, fu);
+      pre.Free();
+      full.Free();
+      fo.Free();
+    }
+    method CopyEphemeralToFrozen(inout old_self: BlockAllocator) returns (self: BlockAllocator)
+    {
+      self := old_self;
+      var BlockAllocator(eph: BitmapImpl.Bitmap, fro: lOption<BitmapImpl.Bitmap>, pre: BitmapImpl.Bitmap, out: BitmapImpl.Bitmap, full: BitmapImpl.Bitmap) := self;
+      if fro.lSome? {
+        var frozen_val: BitmapImpl.Bitmap := unwrap_value(fro);
+        frozen_val.Free();
+      } else {
+        dispose_lnone(fro);
+      }
+      var fo: Bitmap := BitmapImpl.Bitmap.CloneConstructor(eph);
+      self := BlockAllocator(eph, lSome(fo), pre, out, full);
+    }
+    method Free()
+    {
+      var BlockAllocator(ephemeral: BitmapImpl.Bitmap, frozen: lOption<BitmapImpl.Bitmap>, persistent: BitmapImpl.Bitmap, outstanding: BitmapImpl.Bitmap, full: BitmapImpl.Bitmap) := this;
+      ephemeral.Free();
+      if frozen.lSome? {
+        var value: BitmapImpl.Bitmap := unwrap_value(frozen);
+        value.Free();
+      } else {
+        dispose_lnone(frozen);
+      }
+      persistent.Free();
+      outstanding.Free();
+      full.Free();
+    }
+  }
+}
+Dafny program verifier did not attempt verification

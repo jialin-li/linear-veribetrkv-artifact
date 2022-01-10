@@ -1,0 +1,160 @@
+  var Length: int  // immutable
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): bool
+    reads reads(x0, x1, x2, x3, x4)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): set<object?>
+    reads reads(x0, x1, x2, x3, x4)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  predicate Inv()
+  {
+    ghost var q: seq<uint64> := this.dlist.Seq();
+    LinearMutableMap.Inv(this.ptr_map) &&
+    this.dlist.Inv() &&
+    LruModel.WF(q) &&
+    LruModel.I(q) == this.ptr_map.contents.Keys &&
+    (forall i: int {:trigger q[i] in this.ptr_map.contents} :: 
+      0 <= i < |q| ==>
+        q[i] in this.ptr_map.contents &&
+        this.dlist.Index(this.ptr_map.contents[q[i]]) as int == i) &&
+    forall x: uint64 :: 
+      x in this.ptr_map.contents ==>
+        this.dlist.ValidPtr(this.ptr_map.contents[x]) &&
+        this.dlist.Get(this.ptr_map.contents[x]) == x
+  }
+  function Queue(): (q: LruModel.LruQueue)
+    ensures this.Inv() ==> LruModel.WF(q)
+  {
+    this.dlist.Seq()
+  }
+  static method Alloc() returns (lru: LinearLru)
+    ensures lru.Inv()
+    ensures lru.Queue() == LruModel.Empty()
+  {
+    var size: uint64 := 128;
+    var dlist: DList<uint64> := DList.DList<uint64>.Alloc(size + 1);
+    var ptr_map: LinearHashMap<uint64> := LinearMutableMap.Constructor(size);
+    lru := LinearLru(dlist, ptr_map);
+    assert lru.dlist.Seq() == [];
+    assert lru.Queue() == LruModel.Empty();
+  }
+  method Free()
+  {
+    var LinearLru(dlist: DList.DList<uint64>, ptr_map: LinearMutableMap.LinearHashMap<uint64>) := this;
+    dlist.Free();
+    LinearMutableMap.Destructor(ptr_map);
+  }
+  method Remove(x: uint64)
+    requires old_self.Inv()
+    ensures self.Inv()
+    ensures self.Queue() == LruModel.Remove(old_self.Queue(), x)
+  {
+    ghost var q: seq<uint64> := self.dlist.Seq();
+    LruModel.LruRemove'(q, x);
+    var removed: Option<uint64> := LinearMutableMap.RemoveAndGet(inout self.ptr_map, x);
+    if removed.Some? {
+      var Some(p: uint64) := removed;
+      self.dlist.Remove(p);
+    }
+  }
+  method Use(x: uint64)
+    requires old_self.Inv()
+    requires |LruModel.I(old_self.Queue())| < 18446744073709551616 / 8
+    ensures self.Inv()
+    ensures self.Queue() == LruModel.Use(old_self.Queue(), x)
+  {
+    LruModel.QueueCount(self.Queue());
+    LruModel.LruRemove'(self.Queue(), x);
+    self.Remove(x);
+    LruModel.QueueCount(self.Queue());
+    var p: uint64 := self.dlist.InsertBefore(0, x);
+    LinearMutableMap.Insert(inout self.ptr_map, x, p);
+  }
+  method Next() returns (x: uint64)
+    requires this.Inv()
+    requires |LruModel.I(this.Queue())| > 0
+    ensures x == LruModel.Next(this.Queue())
+  {
+    LruModel.QueueCount(this.dlist.Seq());
+    var p: uint64 := this.dlist.Next(0);
+    x := this.dlist.Get(p);
+  }
+  method NextOpt() returns (x: Option<uint64>)
+    requires this.Inv()
+    ensures x == LruModel.NextOpt(this.Queue())
+  {
+    LruModel.QueueCount(this.dlist.Seq());
+    var p: uint64 := this.dlist.Next(0);
+    if p == 0 {
+      x := None;
+    } else {
+      LruModel.reveal_NextOpt();
+      x := Some(this.dlist.Get(p));
+    }
+  }
+Dafny program verifier did not attempt verification

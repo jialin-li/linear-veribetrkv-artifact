@@ -1,0 +1,29 @@
+// FlushImpl.i.dfy
+module FlushImpl {
+  method flush(k: ImplConstants, s: ImplVariables, parentref: BT.G.Reference, slot: uint64, childref: BT.G.Reference, child: Node)
+    modifies s.Repr()
+  {
+    if s.frozenIndirectionTable != null {
+      var b: bool := s.frozenIndirectionTable.HasEmptyLoc(parentref);
+      if b {
+        print "giving up; flush can't run because frozen isn't written";
+        return;
+      }
+    }
+    var nodeOpt: Option<Node> := s.cache.GetOpt(parentref);
+    var parent: Node := nodeOpt.value;
+    var childref: NativeTypes.uint64 := parent.children.value[slot];
+    var newparentBucket: MutBucket, newbuckets: seq<MutBucket>;
+    newparentBucket, newbuckets := BucketImpl.PartialFlush(parent.buckets[slot], child.buckets, child.pivotTable);
+    var newchild: Node := new Node(child.pivotTable, child.children, newbuckets);
+    var newchildref: Option<BT.G.Reference> := allocBookkeeping(k, s, newchild.children);
+    if newchildref.None? {
+      print "giving up; could not get parentref\n";
+      return;
+    }
+    var newparent_children: seq<NativeTypes.uint64> := SeqIndexUpdate(parent.children.value, slot, newchildref.value);
+    writeBookkeeping(k, s, parentref, Some(newparent_children));
+    s.cache.Insert(newchildref.value, newchild);
+    s.cache.UpdateNodeSlot(parentref, parent, slot, newparentBucket, newchildref.value);
+  }
+}

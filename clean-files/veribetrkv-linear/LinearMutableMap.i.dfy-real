@@ -1,0 +1,263 @@
+// LinearMutableMap.i.dfy
+module LinearMutableMap {
+    reveals setUpTo, MapFromStorage, UnderlyingContentsMatchesContents, LinearHashMap, FixedSizeLinearHashMap, Iterator, NextExplainedByI, indexOutput, IteratorOutput, LinearHashMap.Inv, Inv0, EachReturnedKeyExplainedByPassedIndex, CantEquivocate, ValidIterIndex, ConstructorFromSize, ConstructorFromStorage, UnderlyingInv, KeyExplainedByPassedIndex, ValidI, Uint64SlotForKey, SimpleIterator
+    reveals setUpTo, MapFromStorage, UnderlyingContentsMatchesContents, LinearHashMap, FixedSizeLinearHashMap, Iterator, NextExplainedByI, indexOutput, IteratorOutput, LinearHashMap.Inv, Inv0, EachReturnedKeyExplainedByPassedIndex, CantEquivocate, ValidIterIndex, ConstructorFromSize, ConstructorFromStorage, UnderlyingInv, KeyExplainedByPassedIndex, ValidI, Uint64SlotForKey, SimpleIterator
+  datatype   FixedSizeLinearHashMap<V> = FixedSizeLinearHashMap(storage: seq<Item<V>>, count: uint64, ghost contents: map<uint64, Option<V>>)
+  datatype   LinearHashMap<V> = LinearHashMap(underlying: FixedSizeLinearHashMap<V>, count: uint64, ghost contents: map<uint64, V>) {
+  }
+  datatype   IteratorOutput<V> = Next(key: uint64, value: V) | Done
+  datatype   Iterator<V> = Iterator(i: uint64, ghost s: set<uint64>, ghost decreaser: ORDINAL, next: IteratorOutput<V>)
+  datatype   SimpleIterator = SimpleIterator(i: uint64, ghost s: set<uint64>, ghost decreaser: ORDINAL)
+  function method Uint64SlotForKey<V>(self: FixedSizeLinearHashMap<V>, key: uint64): (result: uint64)
+  {
+    var h: uint64 := hash64(key);
+    var storageLength: uint64 := seq_length(self.storage);
+    h % storageLength as uint64
+  }
+  function method ConstructorFromSize<V>(size: uint64): (self: FixedSizeLinearHashMap<V>)
+  {
+    var storage: seq<Item<V>> := seq_alloc_init(size, Empty);
+    FixedSizeLinearHashMap(storage, 0, map[])
+  }
+  function method ConstructorFromStorage<V>(storage: seq<Item<V>>, count: uint64): (self: FixedSizeLinearHashMap<V>)
+  {
+    FixedSizeLinearHashMap(storage, count, map[])
+  }
+  method {:timeLimitMultiplier 3}  Probe<V>(self: FixedSizeLinearHashMap<V>, key: uint64)
+      returns (slotIdx: uint64, ghost startSlotIdx: uint64, ghost skips: uint64)
+  {
+    slotIdx := Uint64SlotForKey(self, key);
+    while true
+    {
+      if seq_get(self.storage, slotIdx).Empty? || (seq_get(self.storage, slotIdx).Tombstone? && seq_get(self.storage, slotIdx).key == key) {
+        return;
+      } else if seq_get(self.storage, slotIdx).key == key {
+        return;
+      }
+      slotIdx := Uint64SlotSuccessorUint64(seq_length(self.storage), slotIdx);
+    }
+  }
+  method FixedSizeInsert<V>(inout old_self: FixedSizeLinearHashMap<V>, key: uint64, value: V)
+      returns (replaced: Option<V>, self: FixedSizeLinearHashMap<V>)
+  {
+    self := old_self;
+    var slotIdx: uint64;
+    slotIdx, probeStartSlotIdx, probeSkips := Probe(self, key);
+    var replacedItem: Item<V> := seq_get(self.storage, slotIdx);
+    var _inout_tmp_2: seq<Item<V>>;
+    _inout_tmp_2 := mut_seq_set(inout self.storage, slotIdx, Entry(key, value));
+    self := self.(storage := _inout_tmp_2);
+    if replacedItem.Empty? {
+      var _inout_tmp_0: uint64 := self.count + 1;
+      self := self.(count := _inout_tmp_0);
+    }
+    if replacedItem.Entry? {
+      replaced := Some(replacedItem.value);
+    } else {
+      replaced := None;
+    }
+  }
+  method FixedSizeUpdateBySlot<V>(inout old_self: FixedSizeLinearHashMap<V>, slotIdx: uint64, value: V)
+      returns (self: FixedSizeLinearHashMap<V>)
+  {
+    self := old_self;
+    var entry: Item<V> := seq_get(self.storage, slotIdx);
+    var _inout_tmp_0: seq<Item<V>>;
+    _inout_tmp_0 := mut_seq_set(inout self.storage, slotIdx, entry.(value := value));
+    self := self.(storage := _inout_tmp_0);
+  }
+  method FixedSizeGet<V>(self: FixedSizeLinearHashMap<V>, key: uint64) returns (found: Option<V>)
+  {
+    if seq_get(self.storage, slotIdx).Entry? {
+      found := Some(seq_get(self.storage, slotIdx).value);
+    } else {
+      found := None;
+    }
+  }
+  method FixedSizeRemove<V>(inout old_self: FixedSizeLinearHashMap<V>, key: uint64)
+      returns (removed: Option<V>, self: FixedSizeLinearHashMap<V>)
+  {
+    self := old_self;
+    var slotIdx: uint64;
+    slotIdx, probeStartSlotIdx, probeSkips := Probe(self, key);
+    if seq_get(self.storage, slotIdx).Entry? {
+      removed := Some(seq_get(self.storage, slotIdx).value);
+      var _inout_tmp_0: seq<Item<V>>;
+      _inout_tmp_0 := mut_seq_set(inout self.storage, slotIdx, Tombstone(key));
+      self := self.(storage := _inout_tmp_0);
+    } else {
+      removed := None;
+    }
+  }
+  function method {:opaque} {:fuel 0, 0} Constructor<V>(size: uint64): (self: LinearHashMap<V>)
+  {
+    var self: LinearHashMap<V> := LinearHashMap(ConstructorFromSize(size), 0, map[]);
+    self
+  }
+  method {:opaque} Destructor<V>(self: LinearHashMap<V>)
+  {
+    var LinearHashMap(underlying: FixedSizeLinearHashMap<V>, _: uint64, _: map<uint64, V>) := self;
+    var FixedSizeLinearHashMap(storage: seq<Item<V>>, _: uint64, _: map<uint64, Option<V>>) := underlying;
+    var _: () := seq_free(storage);
+  }
+  method {:timeLimitMultiplier 3}  Realloc<V>(inout old_self: LinearHashMap<V>) returns (self: LinearHashMap<V>)
+  {
+    self := old_self;
+    var i: uint64 := 0;
+    var newSize: uint64 := (128 + self.count) * 4;
+    var newUnderlying: FixedSizeLinearHashMap<V> := ConstructorFromSize(newSize);
+    var transferredContents: map<uint64, V> := map[];
+    while i < seq_length(self.underlying.storage)
+    {
+      var item: Item<V> := seq_get(self.underlying.storage, i);
+      if item.Entry? {
+        var replaced: Option<V>, _inout_tmp_0: FixedSizeLinearHashMap<V> := FixedSizeInsert(inout newUnderlying, item.key, item.value);
+        newUnderlying := _inout_tmp_0;
+        transferredContents := transferredContents[item.key := item.value];
+      }
+      i := i + 1;
+    }
+    var oldUnderlying: FixedSizeLinearHashMap<V>, _inout_tmp_1: FixedSizeLinearHashMap<V> := Replace(inout self.underlying, newUnderlying);
+    self := self.(underlying := _inout_tmp_1);
+    var FixedSizeLinearHashMap(oldStorage: seq<Item<V>>, _: uint64, _: map<uint64, Option<V>>) := oldUnderlying;
+    var _: () := seq_free(oldStorage);
+  }
+  method InsertAndGetOld<V>(inout old_self: LinearHashMap<V>, key: uint64, value: V)
+      returns (replaced: Option<V>, self: LinearHashMap<V>)
+  {
+    self := old_self;
+    if seq_length(self.underlying.storage) as uint64 / 2 <= self.underlying.count {
+      var _inout_tmp_0: LinearHashMap<V>;
+      _inout_tmp_0 := Realloc(inout self);
+      self := _inout_tmp_0;
+    }
+    var _inout_tmp_2: FixedSizeLinearHashMap<V>;
+    replaced, _inout_tmp_2 := FixedSizeInsert(inout self.underlying, key, value);
+    self := self.(underlying := _inout_tmp_2);
+    if replaced.None? {
+      var _inout_tmp_1: uint64 := self.count + 1;
+      self := self.(count := _inout_tmp_1);
+    }
+  }
+  method Insert<V>(inout old_self: LinearHashMap<V>, key: uint64, value: V)
+      returns (self: LinearHashMap<V>)
+  {
+    self := old_self;
+    var replaced: Option<V>, _inout_tmp_0: LinearHashMap<V> := InsertAndGetOld(inout self, key, value);
+    self := _inout_tmp_0;
+  }
+  method RemoveAndGet<V>(inout old_self: LinearHashMap<V>, key: uint64)
+      returns (removed: Option<V>, self: LinearHashMap<V>)
+  {
+    self := old_self;
+    var _inout_tmp_1: FixedSizeLinearHashMap<V>;
+    removed, _inout_tmp_1 := FixedSizeRemove(inout self.underlying, key);
+    self := self.(underlying := _inout_tmp_1);
+    if removed.Some? {
+      var _inout_tmp_0: uint64 := self.count - 1;
+      self := self.(count := _inout_tmp_0);
+    }
+  }
+  method Remove<V>(inout old_self: LinearHashMap<V>, key: uint64) returns (self: LinearHashMap<V>)
+  {
+    self := old_self;
+    var _: Option<V>, _inout_tmp_0: LinearHashMap<V> := RemoveAndGet(inout self, key);
+    self := _inout_tmp_0;
+  }
+  method Get<V>(self: LinearHashMap<V>, key: uint64) returns (found: Option<V>)
+  {
+    found := FixedSizeGet(self.underlying, key);
+  }
+  function method indexOutput<V>(self: LinearHashMap<V>, i: uint64): (next: IteratorOutput<V>)
+  {
+    if i == seq_length(self.underlying.storage) then
+      Done
+    else
+      Next(seq_get(self.underlying.storage, i).key, seq_get(self.underlying.storage, i).value)
+  }
+  function method SimpleIterOutput<V>(self: LinearHashMap<V>, it: SimpleIterator): (next: IteratorOutput<V>)
+  {
+    indexOutput(self, it.i)
+  }
+  method iterToNext<V>(self: LinearHashMap<V>, i: uint64)
+      returns (i': uint64, output: IteratorOutput<V>)
+  {
+    i' := i;
+    while true
+    {
+      if i' == seq_length(self.underlying.storage) {
+        output := Done;
+        return;
+      } else if seq_get(self.underlying.storage, i').Entry? {
+        output := Next(seq_get(self.underlying.storage, i').key, seq_get(self.underlying.storage, i').value);
+        return;
+      }
+      i' := i' + 1;
+    }
+  }
+  method simpleIterToNext<V>(self: LinearHashMap<V>, i: uint64) returns (i': uint64)
+  {
+    i' := i;
+    while true
+    {
+      if i' == seq_length(self.underlying.storage) {
+        return;
+      } else if seq_get(self.underlying.storage, i').Entry? {
+        return;
+      }
+      i' := i' + 1;
+    }
+  }
+  method IterStart<V>(self: LinearHashMap<V>) returns (it': Iterator<V>)
+  {
+    var i: uint64, next: IteratorOutput<V> := iterToNext(self, 0);
+    it' := Iterator(i, {}, (|self.underlying.storage| - i as int) as ORDINAL, next);
+  }
+  method SimpleIterStart<V>(self: LinearHashMap<V>) returns (it': SimpleIterator)
+  {
+    var i: uint64 := simpleIterToNext(self, 0);
+    it' := SimpleIterator(i, {}, (|self.underlying.storage| - i as int) as ORDINAL);
+  }
+  method IterInc<V>(self: LinearHashMap<V>, it: Iterator<V>) returns (it': Iterator<V>)
+  {
+    var i: uint64, next: IteratorOutput<V> := iterToNext(self, it.i + 1);
+    it' := Iterator(i, it.s + {it.next.key}, (|self.underlying.storage| - i as int) as ORDINAL, next);
+  }
+  method SimpleIterInc<V>(self: LinearHashMap<V>, it: SimpleIterator) returns (it': SimpleIterator)
+  {
+    var i: uint64 := simpleIterToNext(self, it.i + 1);
+    it' := SimpleIterator(i, it.s + {SimpleIterOutput(self, it).key}, (|self.underlying.storage| - i as int) as ORDINAL);
+  }
+  method MaxKey<V>(self: LinearHashMap<V>) returns (maxK: uint64)
+  {
+    var it: Iterator<V> := IterStart(self);
+    while it.next.Next?
+    {
+      var key: uint64 := it.next.key;
+      maxK := if maxK < key then key else maxK;
+      it := IterInc(self, it);
+    }
+  }
+  method UpdateByIter<V>(inout old_self: LinearHashMap<V>, it: SimpleIterator, value: V)
+      returns (self: LinearHashMap<V>)
+  {
+    self := old_self;
+    var _inout_tmp_0: FixedSizeLinearHashMap<V>;
+    _inout_tmp_0 := FixedSizeUpdateBySlot(inout self.underlying, it.i, value);
+    self := self.(underlying := _inout_tmp_0);
+  }
+  method FindSimpleIter<V>(self: LinearHashMap<V>, key: uint64) returns (it: SimpleIterator)
+  {
+    var i: uint64 := if seq_get(self.underlying.storage, idx).Entry? then idx else seq_length(self.underlying.storage) as uint64;
+    it := SimpleIterator(i, setUpTo(self, i as int), (|self.underlying.storage| - i as int) as ORDINAL);
+  }
+  method Clone<V>(self: LinearHashMap<V>) returns (self': LinearHashMap<V>)
+  {
+    var LinearHashMap(underlying: FixedSizeLinearHashMap<V>, count: uint64, contents: map<uint64, V>) := self;
+    var FixedSizeLinearHashMap(storage: seq<Item<V>>, fCount: uint64, fContents: map<uint64, Option<V>>) := underlying;
+    shared_seq_length_bound(storage);
+    var storage': seq<Item<V>> := AllocAndCopy(storage, 0, seq_length(storage));
+    self' := LinearHashMap(FixedSizeLinearHashMap(storage', fCount, fContents), count, contents);
+  }
+}
+Dafny program verifier did not attempt verification

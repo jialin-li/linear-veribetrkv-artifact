@@ -1,0 +1,306 @@
+  var Length: int  // immutable
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): bool
+    reads reads(x0, x1, x2, x3, x4)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): set<object?>
+    reads reads(x0, x1, x2, x3, x4)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  predicate Inv()
+  {
+    Invs(this.nodes, this.freeStack, this.s, this.f, this.g)
+  }
+  function Seq(): seq<A>
+  {
+    this.s
+  }
+  function ValidPtr(p: uint64): (b: bool)
+    ensures b ==> p != 0
+  {
+    0 < p as int < |this.g| &&
+    this.g[p] >= 0
+  }
+  predicate MaybePtr(p: uint64)
+  {
+    p == 0 || this.ValidPtr(p)
+  }
+  function Index(p: uint64): (i: int)
+    ensures this.Inv() && this.ValidPtr(p) ==> 0 <= i < |this.Seq()|
+    ensures this.Inv() && p == 0 ==> i == -1
+  {
+    if this.Inv() && this.MaybePtr(p) then
+      this.g[p]
+    else
+      0
+  }
+  function IndexHi(p: uint64): (i: int)
+    ensures this.Inv() && this.ValidPtr(p) ==> i == this.Index(p)
+    ensures this.Inv() && p == 0 ==> i == |this.Seq()|
+  {
+    if this.Inv() && this.ValidPtr(p) then
+      this.g[p]
+    else
+      |this.s|
+  }
+  function method Get(p: uint64): (a: A)
+    requires this.Inv()
+    requires this.ValidPtr(p)
+    ensures a == this.Seq()[this.Index(p)]
+  {
+    seq_get(this.nodes, p).data.value
+  }
+  function method Next(p: uint64): (p': uint64)
+    requires this.Inv()
+    requires this.MaybePtr(p)
+    ensures this.MaybePtr(p')
+    ensures p == 0 && |this.Seq()| > 0 ==> this.Index(p') == 0
+    ensures p == 0 && |this.Seq()| == 0 ==> p' == 0
+    ensures p != 0 && this.Index(p) + 1 < |this.Seq()| ==> this.Index(p') == this.Index(p) + 1
+    ensures p != 0 && this.Index(p) + 1 == |this.Seq()| ==> p' == 0
+  {
+    seq_get(this.nodes, p).next
+  }
+  function method Prev(p: uint64): (p': uint64)
+    requires this.Inv()
+    requires this.MaybePtr(p)
+    ensures this.MaybePtr(p')
+    ensures p == 0 && |this.Seq()| > 0 ==> this.Index(p') == |this.Seq()| - 1
+    ensures p == 0 && |this.Seq()| == 0 ==> p' == 0
+    ensures p != 0 && this.Index(p) > 0 ==> this.Index(p') == this.Index(p) - 1
+    ensures p != 0 && this.Index(p) == 0 == |this.Seq()| ==> p' == 0
+  {
+    seq_get(this.nodes, p).prev
+  }
+  static method BuildFreeStack(inout a: seq<Node<A>>, k: uint64)
+  {
+    var n: uint64 := k;
+    shared_seq_length_bound(a);
+    while n < seq_length(a)
+      invariant k as int <= n as int <= |a|
+      invariant |a| == |old_a|
+      invariant forall i: int :: 0 <= i < k as nat ==> a[i] == old_a[i]
+      invariant forall i: int :: k as nat <= i < n as nat ==> a[i] == Node(None, i as uint64 - 1, 0)
+    {
+      mut_seq_set(inout a, n, Node(None, n - 1, 0));
+      n := n + 1;
+    }
+  }
+  static method Alloc(initial_len: uint64) returns (l: DList<A>)
+    requires initial_len > 0
+    ensures l.Inv()
+    ensures l.Seq() == []
+  {
+    var nodes: seq<Node<A>> := seq_alloc<Node<A>>(initial_len, Node(None, 0, 0));
+    BuildFreeStack(inout nodes, 1);
+    l := DList(nodes, initial_len - 1, [], [], seq(initial_len as nat, (p: int) => if p == 0 then sentinel else unused));
+  }
+  method Free()
+  {
+    var DList(nodes: seq<Node<A>>, freeStack: uint64, s: seq<A>, f: seq<int>, g: seq<int>) := this;
+    var _: () := seq_free(nodes);
+  }
+  static predicate PointerToIndexUnchanged<A>(old_l: DList<A>, l: DList<A>, x: uint64)
+    requires old_l.ValidPtr(x)
+  {
+    l.ValidPtr(x) &&
+    l.g[x] == old_l.g[x]
+  }
+  method Expand()
+    requires old_self.Inv()
+    ensures self.Inv()
+    ensures self.s == old_self.s
+    ensures forall x: uint64 :: old_self.ValidPtr(x) ==> PointerToIndexUnchanged(old_self, self, x)
+    ensures self.freeStack != 0 && self.nodes[self.freeStack].data.None?
+  {
+    shared_seq_length_bound(self.nodes);
+    var len: uint64 := seq_length(self.nodes);
+    shared_seq_length_bound(self.nodes);
+    var len': uint64 := if len < 9223372036854775807 then len + len else len + 1;
+    var s: uint64 := self.freeStack;
+    SeqResizeMut(inout self.nodes, len', Node(None, s, 0));
+    BuildFreeStack(inout self.nodes, len + 1);
+    inout self.freeStack := len' - 1;
+    inout ghost self.g := seq(|self.nodes|, (i: int) requires 0 <= i < |self.nodes| => if i < |self.g| then self.g[i] else unused);
+  }
+  method Remove(p: uint64)
+    requires old_self.Inv()
+    requires old_self.ValidPtr(p)
+    ensures self.Inv()
+    ensures self.Seq() == old_self.Seq()[..old_self.Index(p)] + old_self.Seq()[old_self.Index(p) + 1..]
+    ensures forall x: uint64 :: x != p && old_self.ValidPtr(x) ==> self.ValidPtr(x) && self.Index(x) == old_self.Index(x) - if old_self.Index(x) < old_self.Index(p) then 0 else 1
+  {
+    ghost var index: int := self.g[p];
+    ghost var s': seq<A> := seq(|self.s| - 1, (x: int) requires 0 <= x < |self.s| - 1 => if x < index then self.s[x] else self.s[x + 1]);
+    ghost var f': seq<int> := seq(|self.f| - 1, (x: int) requires 0 <= x < |self.f| - 1 => if x < index then self.f[x] else self.f[x + 1]);
+    ghost var g': seq<int> := seq(|self.g|, (x: int) requires 0 <= x < |self.g| => if self.g[x] == index then unused else if self.g[x] > index then self.g[x] - 1 else self.g[x]);
+    var freeStack: uint64 := self.freeStack;
+    var node: Node<A> := seq_get(self.nodes, p);
+    var node_prev: Node<A> := seq_get(self.nodes, node.prev);
+    mut_seq_set(inout self.nodes, node.prev, node_prev.(next := node.next));
+    var node_next: Node<A> := seq_get(self.nodes, node.next);
+    mut_seq_set(inout self.nodes, node.next, node_next.(prev := node.prev));
+    mut_seq_set(inout self.nodes, p, Node(None, freeStack, 0));
+    inout self.freeStack := p;
+    inout ghost self.s := s';
+    inout ghost self.f := f';
+    inout ghost self.g := g';
+  }
+  method {:timeLimitMultiplier 3} InsertAfter(p: uint64, a: A) returns (p': uint64)
+    requires old_self.Inv()
+    requires old_self.MaybePtr(p)
+    ensures self.Inv()
+    ensures self.Seq() == old_self.Seq()[..old_self.Index(p) + 1] + [a] + old_self.Seq()[old_self.Index(p) + 1..]
+    ensures self.ValidPtr(p') && self.Index(p') == old_self.Index(p) + 1
+    ensures forall x: uint64 :: old_self.ValidPtr(x) ==> self.ValidPtr(x) && self.Index(x) == old_self.Index(x) + if old_self.Index(x) <= old_self.Index(p) then 0 else 1
+  {
+    p' := self.freeStack;
+    var freeNode: Node<A> := seq_get(self.nodes, p');
+    if p' == 0 || freeNode.data.Some? {
+      self.Expand();
+      p' := self.freeStack;
+      freeNode := seq_get(self.nodes, p');
+    }
+    ghost var selfBefore: DList<A> := self;
+    ghost var index: int := self.g[p];
+    ghost var index': int := index + 1;
+    inout ghost self.s := seq(|selfBefore.s| + 1, (x: int) requires 0 <= x <= |selfBefore.s| => if x == index' then a else if x < index' then selfBefore.s[x] else selfBefore.s[x - 1]);
+    inout ghost self.f := seq(|selfBefore.f| + 1, (x: int) requires 0 <= x <= |selfBefore.f| => if x == index' then p' as int else if x < index' then selfBefore.f[x] else selfBefore.f[x - 1]);
+    inout ghost self.g := seq(|self.g|, (x: int) requires 0 <= x < |self.g| => if x == p' as int then index' else if self.g[x] > index then self.g[x] + 1 else self.g[x]);
+    var node: Node<A> := seq_get(self.nodes, p);
+    var node': Node<A> := Node(Some(a), node.next, p);
+    mut_seq_set(inout self.nodes, p, node.(next := p'));
+    var node_next: Node<A> := seq_get(self.nodes, node.next);
+    mut_seq_set(inout self.nodes, node.next, node_next.(prev := p'));
+    mut_seq_set(inout self.nodes, p', node');
+    inout self.freeStack := freeNode.next;
+  }
+  method {:timeLimitMultiplier 3} InsertBefore(p: uint64, a: A) returns (p': uint64)
+    requires old_self.Inv()
+    requires old_self.MaybePtr(p)
+    ensures self.Inv()
+    ensures self.Seq() == old_self.Seq()[..old_self.IndexHi(p)] + [a] + old_self.Seq()[old_self.IndexHi(p)..]
+    ensures self.ValidPtr(p') && self.Index(p') == old_self.IndexHi(p)
+    ensures forall x: uint64 :: old_self.ValidPtr(x) ==> self.ValidPtr(x) && self.Index(x) == old_self.Index(x) + if old_self.Index(x) < old_self.IndexHi(p) then 0 else 1
+  {
+    p' := self.freeStack;
+    var freeNode: Node<A> := seq_get(self.nodes, p');
+    if p' == 0 || freeNode.data.Some? {
+      self.Expand();
+      p' := self.freeStack;
+      freeNode := seq_get(self.nodes, p');
+    }
+    ghost var selfBefore: DList<A> := self;
+    ghost var index': int := self.IndexHi(p);
+    inout ghost self.s := seq(|selfBefore.s| + 1, (x: int) requires 0 <= x <= |selfBefore.s| => if x == index' then a else if x < index' then selfBefore.s[x] else selfBefore.s[x - 1]);
+    inout ghost self.f := seq(|selfBefore.f| + 1, (x: int) requires 0 <= x <= |selfBefore.f| => if x == index' then p' as int else if x < index' then selfBefore.f[x] else selfBefore.f[x - 1]);
+    inout ghost self.g := seq(|self.g|, (x: int) requires 0 <= x < |self.g| => if x == p' as int then index' else if self.g[x] >= index' then self.g[x] + 1 else self.g[x]);
+    var node: Node<A> := seq_get(self.nodes, p);
+    var node': Node<A> := Node(Some(a), p, node.prev);
+    mut_seq_set(inout self.nodes, p, node.(prev := p'));
+    var node_prev: Node<A> := seq_get(self.nodes, node.prev);
+    mut_seq_set(inout self.nodes, node.prev, node_prev.(next := p'));
+    mut_seq_set(inout self.nodes, p', node');
+    inout self.freeStack := freeNode.next;
+  }
+  method Clone() returns (l': DList<A>)
+    ensures l' == this
+  {
+    var DList(nodes: seq<Node<A>>, freeStack: uint64, s: seq<A>, f: seq<int>, g: seq<int>) := this;
+    shared_seq_length_bound(nodes);
+    var nodes': seq<Node<A>> := AllocAndCopy(nodes, 0, seq_length(nodes));
+    l' := DList(nodes', freeStack, s, f, g);
+  }
+  static ghost const unused: int := -2
+  static ghost const sentinel: int := -1
+  predicate Invs<A>(nodes: seq<Node<A>>, freeStack: uint64, s: seq<A>, f: seq<int>, g: seq<int>)
+  {
+    |f| == |s| &&
+    |g| == |nodes| &&
+    |nodes| > 0 &&
+    g[0] == sentinel &&
+    0 <= freeStack as int < |nodes| &&
+    (forall i: int {:trigger f[i]} :: 
+      0 <= i < |f| ==>
+        0 < f[i] < |nodes|) &&
+    (forall i: int {:trigger g[f[i]]} :: 
+      0 <= i < |f| ==>
+        g[f[i]] == i) &&
+    (forall p: int :: 
+      0 <= p < |g| ==>
+        unused <= g[p] < |s| &&
+        0 <= nodes[p].next as int < |g| &&
+        (g[p] >= 0 <==> nodes[p].data.Some?)) &&
+    forall p: int :: 
+      0 <= p < |g| &&
+      sentinel <= g[p] ==>
+        (g[p] == sentinel ==>
+          p == 0) &&
+        (0 <= g[p] ==>
+          f[g[p]] == p &&
+          nodes[p].data == Some(s[g[p]])) &&
+        nodes[p].next as int == (if g[p] + 1 < |f| then f[g[p] + 1] else 0) &&
+        nodes[p].prev as int == (if g[p] > 0 then f[g[p] - 1] else if g[p] == 0 || |f| == 0 then 0 else f[|f| - 1]) &&
+        nodes[p].prev as int < |nodes|
+  }
+Dafny program verifier did not attempt verification

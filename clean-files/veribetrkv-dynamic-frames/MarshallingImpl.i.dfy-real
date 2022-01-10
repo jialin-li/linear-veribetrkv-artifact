@@ -1,0 +1,278 @@
+// MarshallingImpl.i.dfy
+module MarshallingImpl {
+  type Key = KeyType.Key
+  type Reference = IMM.Reference
+  type Sector = SI.Sector
+  method IsStrictlySortedKeySeq(a: seq<Key>) returns (b: bool)
+  {
+    if |a| as uint64 < 2 {
+      return true;
+    }
+    var i: uint64 := 1;
+    while i < |a| as uint64
+    {
+      var c: int32 := KeyspaceImpl.cmp(a[i - 1], a[i]);
+      if c >= 0 {
+        return false;
+      }
+      i := i + 1;
+    }
+    return true;
+  }
+  method KeyValSeqToKeySeq(vs: seq<V>) returns (result: Option<seq<Key>>)
+  {
+    var aresult: array<Key> := new Key[|vs| as uint64];
+    var i: uint64 := 0;
+    while i < |vs| as uint64
+    {
+      if KeyType.MaxLen() < |vs[i].b| as uint64 {
+        return None;
+      }
+      aresult[i] := vs[i].b;
+      i := i + 1;
+    }
+    return Some(aresult[..i]);
+  }
+  method ValToStrictlySortedKeySeq(v: V) returns (s: Option<seq<Key>>)
+  {
+    var okeys: Option<seq<Key>> := KeyValSeqToKeySeq(v.a);
+    if okeys == None {
+      return None;
+    }
+    var is_sorted: bool := IsStrictlySortedKeySeq(okeys.value);
+    if is_sorted {
+      return okeys;
+    } else {
+      return None;
+    }
+  }
+  method ValToPivots(v: V) returns (s: Option<seq<Key>>)
+  {
+    s := ValToStrictlySortedKeySeq(v);
+    if s.Some? && |s.value| as uint64 > 0 && |s.value[0 as uint64]| as uint64 == 0 {
+      s := None;
+    }
+  }
+  method ValToBucket(v: V) returns (s: Option<BucketImpl.MutBucket>)
+  {
+    var pkv: Option<Pkv> := PackedKVMarshalling.FromVal(v);
+    if pkv.Some? && PackedKV.WeightPkv(pkv.value) < 4294967296 {
+      var b: MutBucket := new BucketImpl.MutBucket.InitFromPkv(pkv.value, false);
+      s := Some(b);
+    } else {
+      s := None;
+    }
+  }
+  method ValToBuckets(a: seq<V>) returns (s: Option<seq<BucketImpl.MutBucket>>)
+  {
+    var ar: array?<BucketImpl.MutBucket?> := new BucketImpl.MutBucket?[|a| as uint64];
+    var i: uint64 := 0;
+    while i < |a| as uint64
+    {
+      var obucket: Option<BucketImpl.MutBucket> := ValToBucket(a[i]);
+      if obucket.Some? {
+        var bucket: BucketImpl.MutBucket := obucket.value;
+        ar[i] := bucket;
+        i := i + 1;
+      } else {
+        return None;
+      }
+    }
+    s := Some(ar[..]);
+  }
+  method ValToNode(v: V) returns (s: Option<Node>)
+  {
+    var pivots_len: uint64 := |v.t[0 as uint64].a| as uint64;
+    var children_len: uint64 := |v.t[1 as uint64].ua| as uint64;
+    var buckets_len: uint64 := |v.t[2 as uint64].a| as uint64;
+    if !(pivots_len <= MaxNumChildrenUint64() - 1 && (children_len == 0 || children_len == pivots_len + 1) && buckets_len == pivots_len + 1) {
+      return None;
+    }
+    var pivotsOpt: Option<seq<Key>> := ValToPivots(v.t[0 as uint64]);
+    if pivotsOpt.None? {
+      return None;
+    }
+    var pivots: seq<KeyType.Key> := pivotsOpt.value;
+    var childrenOpt: Option<seq<Reference>> := Marshalling.valToChildren(v.t[1 as uint64]);
+    if childrenOpt.None? {
+      return None;
+    }
+    var children: seq<Reference> := childrenOpt.value;
+    var obuckets: Option<seq<BucketImpl.MutBucket>> := ValToBuckets(v.t[2 as uint64].a);
+    if obuckets == None {
+      return None;
+    }
+    var buckets: seq<BucketImpl.MutBucket> := obuckets.value;
+    if |buckets| as uint64 > MaxNumChildrenUint64() {
+      return None;
+    }
+    var w: uint64 := BucketImpl.MutBucket.computeWeightOfSeq(buckets);
+    if w > MaxTotalBucketWeightUint64() {
+      return None;
+    }
+    var node: Node := new Node(pivots, if |children| as uint64 == 0 then None else childrenOpt, buckets);
+    return Some(node);
+  }
+  method ValToSector(v: V) returns (s: Option<StateImpl.Sector>)
+  {
+    if v.c == 0 {
+      var s: Option<Superblock> := Marshalling.valToSuperblock(v.val);
+      if s.Some? {
+        return Some(StateImpl.SectorSuperblock(s.value));
+      } else {
+        return None;
+      }
+    } else if v.c == 1 {
+      var mutMap: IndirectionTable? := IndirectionTableImpl.IndirectionTable.ValToIndirectionTable(v.val);
+      if mutMap != null {
+        return Some(StateImpl.SectorIndirectionTable(mutMap));
+      } else {
+        return None;
+      }
+    } else {
+      var node: Option<Node> := ValToNode(v.val);
+      match node {
+        case Some(s) =>
+          return Some(StateImpl.SectorNode(s));
+        case None =>
+          return None;
+      }
+    }
+  }
+  method childrenToVal(children: seq<Reference>) returns (v: V)
+  {
+    return VUint64Array(children);
+  }
+  method strictlySortedKeySeqToVal(keys: seq<Key>) returns (v: V, size: uint64)
+  {
+    var vs: array<V> := new V[|keys| as uint64];
+    size := 0;
+    var i: uint64 := 0;
+    while i < |keys| as uint64
+    {
+      vs[i] := VByteArray(keys[i]);
+      size := size + 8 + |keys[i]| as uint64;
+      i := i + 1;
+    }
+    v := VArray(vs[..i]);
+    size := size + 8;
+  }
+  method pivotsToVal(pivots: seq<Key>) returns (v: V, size: uint64)
+  {
+    v, size := strictlySortedKeySeqToVal(pivots);
+  }
+  method {:fuel SizeOfV, 3} bucketToVal(bucket: BucketImpl.MutBucket) returns (v: V, size: uint64)
+  {
+    var pkv: PKV.Pkv := bucket.GetPkv();
+    v := PackedKVMarshalling.ToVal(pkv);
+    size := bucket.Weight + 32;
+  }
+  method bucketsToVal(buckets: seq<BucketImpl.MutBucket>) returns (v: V, size: uint64)
+  {
+    if |buckets| as uint64 == 0 {
+      v := VArray([]);
+      size := 8;
+    } else {
+      var pref: V, pref_size: uint64 := bucketsToVal(buckets[..|buckets| as uint64 - 1]);
+      var bucket: BucketImpl.MutBucket := buckets[|buckets| as uint64 - 1];
+      var bucketVal: V, bucket_size: uint64 := bucketToVal(bucket);
+      v := VArray(pref.a + [bucketVal]);
+      size := pref_size + bucket_size;
+    }
+  }
+  method {:fuel SizeOfV, 4} nodeToVal(node: Node) returns (v: V, size: uint64)
+  {
+    var buckets: V, size_buckets: uint64 := bucketsToVal(node.buckets);
+    var pivots: V, size_pivots: uint64 := pivotsToVal(node.pivotTable);
+    var children: V, size_children: uint64;
+    if node.children.Some? {
+      children := childrenToVal(node.children.value);
+      size_children := 8 + 8 * |node.children.value| as uint64;
+    } else {
+      children := VUint64Array([]);
+      size_children := 8;
+    }
+    v := VTuple([pivots, children, buckets]);
+    size := size_buckets + size_pivots + size_children;
+  }
+  method {:fuel SizeOfV, 7} superblockToVal(superblock: SectorType.Superblock) returns (v: V)
+  {
+    v := VTuple([VUint64(superblock.counter), VUint64(superblock.journalStart), VUint64(superblock.journalLen), VUint64(superblock.indirectionTableLoc.addr), VUint64(superblock.indirectionTableLoc.len)]);
+  }
+  method sectorToVal(sector: StateImpl.Sector) returns (v: V, size: uint64)
+  {
+    match sector {
+      case SectorNode(node) =>
+        {
+          var w, s := nodeToVal(node);
+          v := VCase(2, w);
+          size := s + 8;
+        }
+    }
+  }
+  method indirectionTableSectorToVal(sector: StateImpl.Sector) returns (v: V, size: uint64)
+  {
+    var w: V, s: uint64 := sector.indirectionTable.indirectionTableToVal();
+    v := VCase(1, w);
+    size := s + 8;
+  }
+  method ParseSector(data: seq<byte>, start: uint64) returns (s: Option<Sector>)
+  {
+    var success: bool, v: V, rest_index: uint64 := ParseVal(data, start, Marshalling.SectorGrammar());
+    if success {
+      var s: Option<StateImpl.Sector> := ValToSector(v);
+      return s;
+    } else {
+      return None;
+    }
+  }
+  method MarshallIntoFixedSize(val: V, ghost grammar: G, start: uint64, n: uint64)
+      returns (data: array<byte>)
+  {
+    data := new byte[n];
+    var computed_size: uint64 := GenericMarshalling.MarshallVal(val, grammar, data, start);
+  }
+  method ParseCheckedSector(data: seq<byte>) returns (s: Option<Sector>)
+  {
+    s := None;
+    if |data| as uint64 >= 32 {
+      var hash: seq<byte> := Crypto.Crc32C(data[32 as uint64..]);
+      if hash == data[..32 as uint64] {
+        s := ParseSector(data, 32);
+      }
+    }
+  }
+  method MarshallCheckedSector(sector: Sector) returns (data: array?<byte>)
+  {
+    if sector.SectorSuperblock? {
+      var v0: V := superblockToVal(sector.superblock);
+      var v: V := VCase(0, v0);
+      var data: array?<byte> := MarshallIntoFixedSize(v, Marshalling.SectorGrammar(), 32, 4096);
+      var hash: seq<byte> := Crypto.Crc32CArray(data, 32, data.Length as uint64 - 32);
+      NativeArrays.CopySeqIntoArray(hash, 0, data, 0, 32);
+      return data;
+    } else if sector.SectorIndirectionTable? {
+      var v: V, computedSize: uint64 := indirectionTableSectorToVal(sector);
+      var size: uint64 := computedSize + 32;
+      if size > IndirectionTableBlockSizeUint64() {
+        return null;
+      }
+      var data: array?<byte> := MarshallIntoFixedSize(v, Marshalling.SectorGrammar(), 32, size);
+      var hash: seq<byte> := Crypto.Crc32CArray(data, 32, data.Length as uint64 - 32);
+      NativeArrays.CopySeqIntoArray(hash, 0, data, 0, 32);
+      return data;
+    } else {
+      var node: Node := sector.node;
+      var wellmarshalled: bool := node.BucketsWellMarshalled();
+      if !wellmarshalled {
+        return null;
+      }
+      var v: V, computedSize: uint64 := sectorToVal(sector);
+      var size: uint64 := computedSize + 32;
+      var data: array?<byte> := MarshallIntoFixedSize(v, Marshalling.SectorGrammar(), 32, size);
+      var hash: seq<byte> := Crypto.Crc32CArray(data, 32, data.Length as uint64 - 32);
+      NativeArrays.CopySeqIntoArray(hash, 0, data, 0, 32);
+      return data;
+    }
+  }
+}

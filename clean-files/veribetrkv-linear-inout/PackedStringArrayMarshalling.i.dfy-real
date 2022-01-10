@@ -1,0 +1,27 @@
+  var Length: int  // immutable
+  function method grammar(): G
+  {
+    GTuple([GUint32Array, GByteArray])
+  }
+  method ComputeWF(psa: Psa) returns (result: bool)
+  {
+    var sorted: bool := Uint32_Order_Impl.ComputeIsSorted(psa.offsets);
+    result := |psa.offsets| as uint64 < 4294967296 && |psa.data| as uint64 < 4294967296 && (|psa.offsets| as uint64 == 0 ==> |psa.data| as uint64 == 0) && (0 < |psa.offsets| as uint64 ==> |psa.data| as uint32 == psa.offsets[|psa.offsets| as uint64 - 1]) && sorted;
+  }
+  method FromVal(v: V) returns (psa: Option<Psa>)
+  {
+    var offsets: seq<uint32> := v.t[0].va;
+    var data: seq<byte> := v.t[1].b;
+    var tmp: Psa := Psa(offsets, data);
+    var wf: bool := ComputeWF(tmp);
+    if wf {
+      psa := Some(tmp);
+    } else {
+      psa := None;
+    }
+  }
+  method ToVal(psa: Psa) returns (v: V)
+  {
+    v := VTuple([VUint32Array(psa.offsets), VByteArray(psa.data)]);
+  }
+Dafny program verifier did not attempt verification

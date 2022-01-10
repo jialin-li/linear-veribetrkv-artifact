@@ -1,0 +1,47 @@
+// FlushImpl.i.dfy
+module FlushImpl {
+  method {:timeLimitMultiplier 2}  doFlush(inout old_s: ImplVariables, parentref: BT.G.Reference, slot: uint64, childref: BT.G.Reference)
+      returns (s: ImplVariables)
+  {
+    s := old_s;
+    var b: bool := false;
+    if s.frozenIndirectionTable.lSome? {
+      b := s.frozenIndirectionTable.value.HasEmptyLoc(parentref);
+    }
+    if b {
+      print "giving up; flush can't run because frozen isn't written";
+    } else {
+      var bounded: bool := s.cache.NodeBoundedBucket(parentref, childref, slot);
+      if bounded {
+        var newparentBucket: MutBucket, newchild: Node := s.cache.NodePartialFlush(parentref, childref, slot);
+        var newchildref: Option<BT.G.Reference>, _inout_tmp_3: ImplVariables := allocBookkeeping(inout s, newchild.children);
+        s := _inout_tmp_3;
+        if newchildref.None? {
+          var _: () := FreeMutBucket(newparentBucket);
+          var _: () := FreeNode(newchild);
+          print "giving up; could not get parentref\n";
+        } else {
+          var _inout_tmp_0: LMutCache;
+          _inout_tmp_0 := s.cache.Insert(inout s.cache, newchildref.value, newchild);
+          s := s.(cache := _inout_tmp_0);
+          var newparent_children: Option<seq<BT.G.Reference>>, _inout_tmp_1: LMutCache := s.cache.NodeUpdateSlot(inout s.cache, parentref, slot, newparentBucket, newchildref.value);
+          s := s.(cache := _inout_tmp_1);
+          var _inout_tmp_2: ImplVariables;
+          _inout_tmp_2 := writeBookkeeping(inout s, parentref, newparent_children);
+          s := _inout_tmp_2;
+        }
+      } else {
+        print "giving up; flush can't run because flushed keys are out of bound for its children";
+      }
+    }
+  }
+  method {:timeLimitMultiplier 2}  flush(inout old_s: ImplVariables, parentref: BT.G.Reference, slot: uint64, childref: BT.G.Reference)
+      returns (s: ImplVariables)
+  {
+    s := old_s;
+    var _inout_tmp_0: ImplVariables;
+    _inout_tmp_0 := doFlush(inout s, parentref, slot, childref);
+    s := _inout_tmp_0;
+  }
+}
+Dafny program verifier did not attempt verification

@@ -1,0 +1,179 @@
+// StateModel.i.dfy
+module StateModel {
+  type Reference = BT.G.Reference
+  type DiskOp = BJD.DiskOp
+  type IndirectionTable = IndirectionTableModel.IndirectionTable
+  datatype Node = Node(pivotTable: Pivots.PivotTable, children: Option<seq<Reference>>, buckets: seq<Bucket>)
+  datatype BCVariables = Ready(persistentIndirectionTable: IndirectionTable, frozenIndirectionTable: Option<IndirectionTable>, ephemeralIndirectionTable: IndirectionTable, persistentIndirectionTableLoc: DiskLayout.Location, frozenIndirectionTableLoc: Option<DiskLayout.Location>, outstandingIndirectionTableWrite: Option<BC.ReqId>, outstandingBlockWrites: map<BC.ReqId, BC.OutstandingWrite>, outstandingBlockReads: map<BC.ReqId, BC.OutstandingRead>, cache: map<Reference, Node>, lru: LruModel.LruQueue, blockAllocator: BlockAllocatorModel.BlockAllocatorModel) | LoadingIndirectionTable(indirectionTableLoc: DiskLayout.Location, indirectionTableRead: Option<BC.ReqId>) | Unready
+  datatype Variables = Variables(bc: BCVariables, jc: CommitterModel.CM)
+  datatype Sector = SectorNode(node: Node) | SectorIndirectionTable(indirectionTable: IndirectionTable) | SectorSuperblock(superblock: SectorType.Superblock)
+  predicate IsLocAllocIndirectionTable(indirectionTable: IndirectionTable, i: int)
+    decreases indirectionTable, i
+  {
+    IndirectionTableModel.IsLocAllocIndirectionTable(indirectionTable, i)
+  }
+  predicate IsLocAllocOutstanding(outstanding: map<BC.ReqId, BC.OutstandingWrite>, i: int)
+    decreases outstanding, i
+  {
+    !forall id: uint64 {:trigger outstanding[id]} {:trigger id in outstanding} | id in outstanding :: outstanding[id].loc.addr as int != i * NodeBlockSize() as int
+  }
+  predicate IsLocAllocBitmap(bm: BitmapModel.BitmapModelT, i: int)
+    decreases bm, i
+  {
+    IndirectionTableModel.IsLocAllocBitmap(bm, i)
+  }
+  predicate {:opaque} {:fuel 0, 0} ConsistentBitmap(ephemeralIndirectionTable: IndirectionTable, frozenIndirectionTable: Option<IndirectionTable>, persistentIndirectionTable: IndirectionTable, outstandingBlockWrites: map<BC.ReqId, BC.OutstandingWrite>, blockAllocator: BlockAllocatorModel.BlockAllocatorModel)
+    decreases ephemeralIndirectionTable, frozenIndirectionTable, persistentIndirectionTable, outstandingBlockWrites, blockAllocator
+  {
+    (forall i: int {:trigger IsLocAllocBitmap(blockAllocator.ephemeral, i)} {:trigger IsLocAllocIndirectionTable(ephemeralIndirectionTable, i)} :: 
+      IsLocAllocIndirectionTable(ephemeralIndirectionTable, i) <==> IsLocAllocBitmap(blockAllocator.ephemeral, i)) &&
+    (forall i: int {:trigger IsLocAllocBitmap(blockAllocator.persistent, i)} {:trigger IsLocAllocIndirectionTable(persistentIndirectionTable, i)} :: 
+      IsLocAllocIndirectionTable(persistentIndirectionTable, i) <==> IsLocAllocBitmap(blockAllocator.persistent, i)) &&
+    (frozenIndirectionTable.Some? <==> blockAllocator.frozen.Some?) &&
+    (frozenIndirectionTable.Some? ==>
+      forall i: int {:trigger IsLocAllocBitmap(blockAllocator.frozen.value, i)} {:trigger IsLocAllocIndirectionTable(frozenIndirectionTable.value, i)} :: 
+        IsLocAllocIndirectionTable(frozenIndirectionTable.value, i) <==> IsLocAllocBitmap(blockAllocator.frozen.value, i)) &&
+    forall i: int {:trigger IsLocAllocBitmap(blockAllocator.outstanding, i)} {:trigger IsLocAllocOutstanding(outstandingBlockWrites, i)} :: 
+      IsLocAllocOutstanding(outstandingBlockWrites, i) <==> IsLocAllocBitmap(blockAllocator.outstanding, i)
+  }
+  predicate WFNode(node: Node)
+    decreases node
+  {
+    WFBucketList(node.buckets, node.pivotTable) &&
+    (node.children.Some? ==>
+      |node.buckets| == |node.children.value|) &&
+    |node.buckets| <= MaxNumChildren() &&
+    WeightBucketList(node.buckets) <= MaxTotalBucketWeight()
+  }
+  predicate WFCache(cache: map<Reference, Node>)
+    decreases cache
+  {
+    forall ref: NativeTypes.uint64 {:trigger cache[ref]} {:trigger ref in cache} | ref in cache :: 
+      WFNode(cache[ref])
+  }
+  function TotalCacheSize(s: BCVariables): int
+    requires s.Ready?
+    decreases s
+  {
+    |s.cache| + |s.outstandingBlockReads|
+  }
+  predicate WFVarsReady(s: BCVariables)
+    requires s.Ready?
+    decreases s
+  {
+    var Ready(persistentIndirectionTable: IndirectionTable, frozenIndirectionTable: Option<IndirectionTable>, ephemeralIndirectionTable: IndirectionTable, persistentIndirectionTableLoc: DiskLayout.Location, frozenIndirectionTableLoc: Option<DiskLayout.Location>, outstandingIndirectionTableWrite: Option<BC.ReqId>, oustandingBlockWrites: map<BC.ReqId, BC.OutstandingWrite>, outstandingBlockReads: map<BC.ReqId, BC.OutstandingRead>, cache: map<Reference, Node>, lru: LruModel.LruQueue, locBitmap: BlockAllocatorModel.BlockAllocatorModel) := s;
+    WFCache(cache) &&
+    LruModel.WF(lru) &&
+    LruModel.I(lru) == cache.Keys &&
+    TotalCacheSize(s) <= MaxCacheSize() &&
+    IndirectionTableModel.Inv(ephemeralIndirectionTable) &&
+    IndirectionTableModel.TrackingGarbage(ephemeralIndirectionTable) &&
+    IndirectionTableModel.Inv(persistentIndirectionTable) &&
+    (frozenIndirectionTable.Some? ==>
+      IndirectionTableModel.Inv(frozenIndirectionTable.value)) &&
+    BlockAllocatorModel.Inv(s.blockAllocator) &&
+    ConsistentBitmap(s.ephemeralIndirectionTable, s.frozenIndirectionTable, s.persistentIndirectionTable, s.outstandingBlockWrites, s.blockAllocator)
+  }
+  predicate WFBCVars(vars: BCVariables)
+    decreases vars
+  {
+    true &&
+    (vars.Ready? ==>
+      WFVarsReady(vars))
+  }
+  predicate WFSector(sector: Sector)
+    decreases sector
+  {
+    match sector {
+      case SectorNode(node) =>
+        WFNode(node)
+      case SectorIndirectionTable(indirectionTable) =>
+        IndirectionTableModel.Inv(indirectionTable) &&
+        BC.WFCompleteIndirectionTable(IIndirectionTable(indirectionTable))
+      case SectorSuperblock(superblock) =>
+        JC.WFSuperblock(superblock)
+    }
+  }
+  function INode(node: Node): (result: BT.G.Node)
+    decreases node
+  {
+    BT.G.Node(node.pivotTable, node.children, node.buckets)
+  }
+  function ICache(cache: map<Reference, Node>): map<Reference, BT.G.Node>
+    requires WFCache(cache)
+    decreases cache
+  {
+    map ref: NativeTypes.uint64 {:trigger cache[ref]} {:trigger ref in cache} | ref in cache :: INode(cache[ref])
+  }
+  function IIndirectionTable(table: IndirectionTable): (result: SectorType.IndirectionTable)
+    decreases table
+  {
+    IndirectionTableModel.I(table)
+  }
+  function IIndirectionTableOpt(table: Option<IndirectionTable>): (result: Option<SectorType.IndirectionTable>)
+    decreases table
+  {
+    if table.Some? then
+      Some(IIndirectionTable(table.value))
+    else
+      None
+  }
+  function IBlockCache(vars: BCVariables): BBC.Variables
+    requires WFBCVars(vars)
+    decreases vars
+  {
+    match vars {
+      case Ready(persistentIndirectionTable, frozenIndirectionTable, ephemeralIndirectionTable, persistentIndirectionTableLoc, frozenIndirectionTableLoc, outstandingIndirectionTableWrite, oustandingBlockWrites, outstandingBlockReads, cache, lru, locBitmap) =>
+        BC.Ready(IIndirectionTable(persistentIndirectionTable), IIndirectionTableOpt(frozenIndirectionTable), IIndirectionTable(ephemeralIndirectionTable), persistentIndirectionTableLoc, frozenIndirectionTableLoc, outstandingIndirectionTableWrite, oustandingBlockWrites, outstandingBlockReads, ICache(cache))
+      case LoadingIndirectionTable(loc, read) =>
+        BC.LoadingIndirectionTable(loc, read)
+      case Unready =>
+        BC.Unready
+    }
+  }
+  function ISector(sector: Sector): SectorType.Sector
+    requires WFSector(sector)
+    decreases sector
+  {
+    match sector {
+      case SectorNode(node) =>
+        SectorType.SectorNode(INode(node))
+      case SectorIndirectionTable(indirectionTable) =>
+        SectorType.SectorIndirectionTable(IIndirectionTable(indirectionTable))
+      case SectorSuperblock(superblock) =>
+        SectorType.SectorSuperblock(superblock)
+    }
+  }
+  predicate WFVars(s: Variables)
+    decreases s
+  {
+    WFBCVars(s.bc) &&
+    CommitterModel.WF(s.jc)
+  }
+  function IVars(vars: Variables): BJC.Variables
+    requires WFVars(vars)
+    decreases vars
+  {
+    BJC.Variables(IBlockCache(vars.bc), CommitterModel.I(vars.jc))
+  }
+  function I(k: Constants, s: Variables): BJC.Variables
+    requires WFVars(s)
+    decreases k, s
+  {
+    IVars(s)
+  }
+  predicate BCInv(k: Constants, s: BCVariables)
+    decreases k, s
+  {
+    WFBCVars(s) &&
+    BBC.Inv(Ik(k).bc, IBlockCache(s))
+  }
+  predicate Inv(k: Constants, s: Variables)
+    decreases k, s
+  {
+    WFVars(s) &&
+    BCInv(k, s.bc) &&
+    CommitterModel.Inv(s.jc) &&
+    BJC.Inv(Ik(k), I(k, s))
+  }
+}

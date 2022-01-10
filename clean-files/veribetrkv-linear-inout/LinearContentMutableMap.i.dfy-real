@@ -1,0 +1,143 @@
+  var Length: int  // immutable
+  method FreeNonEntry()
+  {
+    match this {
+      case Empty() =>
+      case Tombstone(key) =>
+    }
+  }
+  function method Uint64SlotForKey<V>(self: FixedSizeLinearHashMap<V>, key: uint64): (result: uint64)
+  {
+    var h: uint64 := hash64(key);
+    var storageLength: uint64 := lseq_length_as_uint64(self.storage);
+    h % storageLength as uint64
+  }
+  method ConstructorFromSize<V>(size: uint64) returns (self: FixedSizeLinearHashMap<V>)
+  {
+    var storage: lseq<lItem<V>> := lseq_alloc(size);
+    var i: uint64 := 0 as uint64;
+    while i < size
+    {
+      var item: lItem<V> := lItem.Empty();
+      lseq_give_inout(inout storage, i, item);
+      i := i + 1;
+    }
+    self := FixedSizeLinearHashMap(storage, 0, map[]);
+  }
+  method {:timeLimitMultiplier 4} Probe<V>(self: FixedSizeLinearHashMap<V>, key: uint64)
+      returns (slotIdx: uint64, ghost startSlotIdx: uint64, ghost skips: uint64)
+  {
+    slotIdx := Uint64SlotForKey(self, key);
+    while true
+    {
+      var entry: lItem<V> := lseq_peek(self.storage, slotIdx);
+      if entry.Empty? || (entry.Tombstone? && entry.key == key) {
+        return;
+      } else if entry.key == key {
+        return;
+      }
+      slotIdx := Uint64SlotSuccessorUint64(lseq_length_as_uint64(self.storage), slotIdx);
+    }
+  }
+  method FixedSizeInsert<V>(inout self: FixedSizeLinearHashMap<V>, key: uint64, value: V)
+      returns (replaced: lOption<V>)
+  {
+    var entry: lItem<V> := lItem.Entry(key, value);
+    replaced := FixedSizeInsertEntry(inout self, entry);
+  }
+  method FixedSizeInsertEntry<V>(inout self: FixedSizeLinearHashMap<V>, entry: lItem<V>) returns (replaced: lOption<V>)
+  {
+    var slotIdx: uint64;
+    slotIdx, probeStartSlotIdx, probeSkips := Probe(self, entry.key);
+    var olditem: lItem<V> := lseq_take_inout(inout self.storage, slotIdx);
+    lseq_give_inout(inout self.storage, slotIdx, entry);
+    if olditem.Empty? {
+      olditem.FreeNonEntry();
+      inout self.count := self.count + 1;
+      replaced := lNone;
+    } else if olditem.Tombstone? {
+      olditem.FreeNonEntry();
+      replaced := lNone;
+    } else {
+      var Entry(_: uint64, value: V) := olditem;
+      replaced := lSome(value);
+    }
+  }
+  method FixedSizeUpdateBySlot<V>(inout self: FixedSizeLinearHashMap<V>, slotIdx: uint64, value: V)
+      returns (replaced: V)
+  {
+    var entry: lItem<V> := lseq_take_inout(inout self.storage, slotIdx);
+    var Entry(key: uint64, oldvalue: V) := entry;
+    lseq_give_inout(inout self.storage, slotIdx, lItem.Entry(key, value));
+    replaced := oldvalue;
+  }
+  method IsEntry<V>(self: FixedSizeLinearHashMap<V>, key: uint64) returns (b: bool)
+  {
+    b := lseq_peek(self.storage, slotIdx).Entry?;
+  }
+  method FixedSizeGet<V>(self: FixedSizeLinearHashMap<V>, key: uint64) returns (found: V)
+  {
+    found := lseq_peek(self.storage, slotIdx).value;
+  }
+  method FixedSizeRemove<V>(inout self: FixedSizeLinearHashMap<V>, key: uint64) returns (removed: lOption<V>)
+  {
+    var slotIdx: uint64;
+    slotIdx, probeStartSlotIdx, probeSkips := Probe(self, key);
+    if lseq_peek(self.storage, slotIdx).Entry? {
+      var item: lItem<V> := lseq_take_inout(inout self.storage, slotIdx);
+      lseq_give_inout(inout self.storage, slotIdx, lItem.Tombstone(key));
+      var Entry(_: uint64, value: V) := item;
+      removed := lSome(value);
+    } else {
+      removed := lNone;
+    }
+  }
+  method Constructor<V>(size: uint64) returns (self: LinearHashMap<V>)
+  {
+    var fixed: FixedSizeLinearHashMap<V> := ConstructorFromSize(size);
+    self := LinearHashMap(fixed, 0, map[]);
+  }
+  method {:timeLimitMultiplier 16} Realloc<V>(inout self: LinearHashMap<V>)
+  {
+    var newSize: uint64 := (128 + self.count) * 4;
+    var newUnderlying: FixedSizeLinearHashMap<V> := ConstructorFromSize(newSize);
+    var i: uint64 := 0 as uint64;
+    var size: uint64 := lseq_length_as_uint64(self.underlying.storage);
+    while i < size
+    {
+      var item: lItem<V> := lseq_take_inout(inout self.underlying.storage, i);
+      if item.Entry? {
+        var replaced: lOption<V> := FixedSizeInsertEntry(inout newUnderlying, item);
+      } else {
+        item.FreeNonEntry();
+      }
+      i := i + 1;
+    }
+    var oldUnderlying: FixedSizeLinearHashMap<V> := Replace(inout self.underlying, newUnderlying);
+    var FixedSizeLinearHashMap(oldstorage: lseq<lItem<V>>, _: uint64, _: map<uint64, Option<V>>) := oldUnderlying;
+    lseq_free(oldstorage);
+  }
+  method Insert<V>(inout self: LinearHashMap<V>, key: uint64, value: V)
+      returns (replaced: lOption<V>)
+  {
+    var len: uint64 := lseq_length_as_uint64(self.underlying.storage);
+    if len / 2 <= self.underlying.count {
+      Realloc(inout self);
+    }
+    replaced := FixedSizeInsert(inout self.underlying, key, value);
+    if replaced.lNone? {
+      inout self.count := self.count + 1;
+    }
+  }
+  method Remove<V>(inout self: LinearHashMap<V>, key: uint64) returns (removed: lOption<V>)
+  {
+    removed := FixedSizeRemove(inout self.underlying, key);
+    if removed.lSome? {
+      inout self.count := self.count - 1;
+    }
+  }
+  method Get<V>(self: LinearHashMap<V>, key: uint64) returns (result: V)
+  {
+    result := FixedSizeGet(self.underlying, key);
+  }
+Dafny program verifier did not attempt verification

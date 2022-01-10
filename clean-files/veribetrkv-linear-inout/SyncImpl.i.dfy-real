@@ -1,0 +1,101 @@
+  var Length: int  // immutable
+  method AssignRefToLocEphemeral(inout s: ImplVariables, ref: BT.G.Reference, loc: Location)
+  {
+    var added: bool := s.ephemeralIndirectionTable.AddLocIfPresent(ref, loc);
+    if added {
+      s.blockAllocator.MarkUsedEphemeral(loc.addr / NodeBlockSizeUint64());
+    }
+  }
+  method AssignRefToLocFrozen(inout s: ImplVariables, ref: BT.G.Reference, loc: Location)
+  {
+    var added: bool := s.frozenIndirectionTable.value.AddLocIfPresent(ref, loc);
+    if added {
+      s.blockAllocator.MarkUsedFrozen(loc.addr / NodeBlockSizeUint64());
+    }
+  }
+  method AssignIdRefLocOutstanding(inout s: ImplVariables, id: D.ReqId, ref: BT.G.Reference, loc: Location)
+  {
+    if id in s.outstandingBlockWrites {
+      var numBlocks: uint64 := s.outstandingBlockWrites[id].loc.addr / NodeBlockSizeUint64();
+      if numBlocks < NumBlocksUint64() {
+        s.blockAllocator.MarkFreeOutstanding(numBlocks);
+      }
+    }
+    inout s.outstandingBlockWrites := s.outstandingBlockWrites[id := BC.OutstandingWrite(ref, loc)];
+    s.blockAllocator.MarkUsedOutstanding(loc.addr / NodeBlockSizeUint64());
+  }
+  method {:fuel BC.GraphClosed, 0} {:fuel BC.CacheConsistentWithSuccessors, 0} maybeFreeze(inout s: ImplVariables, io: DiskIOHandler) returns (froze: bool)
+    modifies io
+  {
+    var foundDeallocable: Option<Reference> := FindDeallocable(s);
+    if foundDeallocable.Some? {
+      Dealloc(inout s, io, foundDeallocable.value);
+      froze := false;
+    } else {
+      var Ready(persistentIndirectionTable: IT.IndirectionTable, frozenIndirectionTable: lOption<IT.IndirectionTable>, ephemeralIndirectionTable: IT.IndirectionTable, persistentIndirectionTableLoc: DiskLayout.Location, frozenIndirectionTableLoc: Option<DiskLayout.Location>, outstandingIndirectionTableWrite: Option<BC.ReqId>, outstandingBlockWrites: map<BC.ReqId, BC.OutstandingWrite>, outstandingBlockReads: map<BC.ReqId, BC.OutstandingRead>, cache: LMutCache, lru: LinearLru.LinearLru, blockAllocator: BlockAllocatorImpl.BlockAllocator) := s;
+      var clonedEphemeralIndirectionTable: IndirectionTable := ephemeralIndirectionTable.Clone();
+      dispose_lnone(frozenIndirectionTable);
+      frozenIndirectionTable := lSome(clonedEphemeralIndirectionTable);
+      s := Ready(persistentIndirectionTable, frozenIndirectionTable, ephemeralIndirectionTable, persistentIndirectionTableLoc, frozenIndirectionTableLoc, outstandingIndirectionTableWrite, outstandingBlockWrites, outstandingBlockReads, cache, lru, blockAllocator);
+      s.blockAllocator.CopyEphemeralToFrozen();
+      froze := true;
+    }
+  }
+  method TryToWriteBlock(inout s: ImplVariables, io: DiskIOHandler, ref: BT.G.Reference)
+    modifies io
+  {
+    var placeholder: Node := Node.EmptyNode();
+    var node: Node := s.cache.ReplaceAndGet(ref, placeholder);
+    var sector: Sector := SectorNode(node);
+    var id: Option<D.ReqId>, loc: Option<Location> := FindLocationAndRequestWrite(io, s, sector);
+    var SectorNode(n: Node) := sector;
+    var replaced: Node := s.cache.ReplaceAndGet(ref, n);
+    var _: () := FreeNode(replaced);
+    if id.Some? {
+      AssignRefToLocEphemeral(inout s, ref, loc.value);
+      AssignIdRefLocOutstanding(inout s, id.value, ref, loc.value);
+      if s.frozenIndirectionTable.lSome? {
+        AssignRefToLocFrozen(inout s, ref, loc.value);
+      }
+    } else {
+      print "sync: giving up; write req failed\n";
+    }
+  }
+  method {:fuel BC.GraphClosed, 0} syncFoundInFrozen(inout s: ImplVariables, io: DiskIOHandler, ref: Reference)
+    modifies io
+  {
+    var ephemeralRef: Option<Entry> := s.ephemeralIndirectionTable.GetEntry(ref);
+    if ephemeralRef.Some? && ephemeralRef.value.loc.Some? {
+      print "sync: giving up; ref already in ephemeralIndirectionTable.locs but not frozen";
+    } else {
+      TryToWriteBlock(inout s, io, ref);
+    }
+  }
+  method {:fuel BC.GraphClosed, 0} sync(inout s: ImplVariables, io: DiskIOHandler)
+      returns (froze: bool, wait: bool)
+    modifies io
+  {
+    wait := false;
+    froze := false;
+    if s.frozenIndirectionTableLoc.Some? {
+      wait := true;
+    } else if s.frozenIndirectionTable.lNone? {
+      froze := maybeFreeze(inout s, io);
+    } else {
+      var foundInFrozen: Option<BT.G.Reference> := s.frozenIndirectionTable.value.FindRefWithNoLoc();
+      if foundInFrozen.Some? {
+        syncFoundInFrozen(inout s, io, foundInFrozen.value);
+      } else if s.outstandingBlockWrites != map[] {
+        wait := true;
+      } else {
+        var id: Option<D.ReqId>, loc: Option<Location> := FindIndirectionTableLocationAndRequestWrite(io, s, SectorIndirectionTable(s.frozenIndirectionTable.value));
+        if id.Some? {
+          inout s.outstandingIndirectionTableWrite := id;
+          inout s.frozenIndirectionTableLoc := loc;
+        } else {
+          print "sync: giving up; write back indirection table failed (no id)\n";
+        }
+      }
+    }
+  }
+Dafny program verifier did not attempt verification

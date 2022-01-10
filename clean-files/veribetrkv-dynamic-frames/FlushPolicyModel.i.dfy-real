@@ -1,0 +1,4 @@
+// FlushPolicyModel.i.dfy
+module FlushPolicyModel {
+  datatype Action = ActionPageIn(ref: BT.G.Reference) | ActionSplit(parentref: BT.G.Reference, slot: uint64) | ActionFlush(parentref: BT.G.Reference, slot: uint64) | ActionRepivot(ref: BT.G.Reference) | ActionGrow | ActionEvict | ActionFail
+}

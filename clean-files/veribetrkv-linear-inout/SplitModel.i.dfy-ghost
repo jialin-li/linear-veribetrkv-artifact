@@ -1,0 +1,362 @@
+  var Length: int  // immutable
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): bool
+    reads reads(x0, x1, x2, x3, x4)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): set<object?>
+    reads reads(x0, x1, x2, x3, x4)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): bool
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  lemma lemmaChildrenConditionsCutoffNode(s: BBC.Variables, node: Node, lbound: Key, ubound: Option<Key>)
+    requires BT.WFNode(node)
+    requires s.Ready?
+    requires ValidSplitKey(node, lbound, ubound)
+    requires ChildrenConditions(s, node.children)
+    ensures ChildrenConditions(s, CutoffNode(node, lbound, ubound).children)
+  {
+    reveal_CutoffNode();
+    reveal_CutoffNodeAndKeepLeft();
+    reveal_CutoffNodeAndKeepRight();
+  }
+  lemma lemmaChildrenConditionsSplitChild(s: BBC.Variables, child: Node, num_children_left: int)
+    requires SplitChildLeft.requires(child, num_children_left)
+    requires SplitChildRight.requires(child, num_children_left)
+    requires s.Ready?
+    requires ChildrenConditions(s, child.children)
+    ensures ChildrenConditions(s, SplitChildLeft(child, num_children_left).children)
+    ensures ChildrenConditions(s, SplitChildRight(child, num_children_left).children)
+  {
+  }
+  lemma lemmaSplitChildValidReferences(child1: BT.G.Node, child: BT.G.Node, num_children_left: int, graph: map<BT.G.Reference, seq<BT.G.Reference>>, lbound: Key, ubound: Option<Key>)
+    requires BT.WFNode(child1)
+    requires BT.WFNode(child)
+    requires 1 <= num_children_left < |child.buckets|
+    requires ValidSplitKey(child1, lbound, ubound)
+    requires BC.BlockPointsToValidReferences(child1, graph)
+    requires child == CutoffNode(child1, lbound, ubound)
+    ensures BC.BlockPointsToValidReferences(BT.SplitChildLeft(child, num_children_left), graph)
+    ensures BC.BlockPointsToValidReferences(BT.SplitChildRight(child, num_children_left), graph)
+  {
+  }
+  lemma lemmaSplitParentValidReferences(fused_parent: BT.G.Node, pivot: Key, slot: int, left_childref: BT.G.Reference, right_childref: BT.G.Reference, graph: map<BT.G.Reference, seq<BT.G.Reference>>)
+    requires BT.WFNode(fused_parent)
+    requires 0 <= slot < |fused_parent.buckets|
+    requires fused_parent.children.Some?
+    requires BC.BlockPointsToValidReferences(fused_parent, graph)
+    requires left_childref in graph
+    requires right_childref in graph
+    requires PivotInsertable(fused_parent.pivotTable, slot + 1, pivot)
+    ensures BC.BlockPointsToValidReferences(SplitParent(fused_parent, pivot, slot, left_childref, right_childref), graph)
+  {
+    ghost var split_parent: Node := SplitParent(fused_parent, pivot, slot, left_childref, right_childref);
+    forall r: NativeTypes.uint64 | r in BT.G.Successors(split_parent)
+      ensures r in graph
+    {
+      assert BC.BlockPointsToValidReferences(fused_parent, graph);
+      ghost var idx: int :| 0 <= idx < |split_parent.children.value| && split_parent.children.value[idx] == r;
+      if idx < slot {
+        assert r == fused_parent.children.value[idx];
+        assert r in graph;
+      } else if idx == slot {
+        assert r == left_childref;
+        assert r in graph;
+      } else if idx == slot + 1 {
+        assert r == right_childref;
+        assert r in graph;
+      } else {
+        assert r == fused_parent.children.value[idx - 1];
+        assert r in graph;
+      }
+    }
+  }
+  function {:opaque} {:fuel 0, 0} splitBookkeeping(s: BBC.Variables, left_childref: BT.G.Reference, right_childref: BT.G.Reference, parentref: BT.G.Reference, fused_parent_children: seq<BT.G.Reference>, left_child: Node, right_child: Node, slot: int): (s': BBC.Variables)
+    requires 0 <= slot < |fused_parent_children|
+    requires s.Ready?
+    requires s.WriteAllocConditions()
+    requires ChildrenConditions(s, left_child.children)
+    requires ChildrenConditions(s, right_child.children)
+    requires ChildrenConditions(s, Some(fused_parent_children))
+    requires |fused_parent_children| < MaxNumChildren()
+    ensures s'.Ready?
+    ensures s'.cache == s.cache
+  {
+    lemmaChildrenConditionsPreservedWriteBookkeeping(s, left_childref, left_child.children, right_child.children);
+    lemmaChildrenConditionsPreservedWriteBookkeeping(s, left_childref, left_child.children, Some(fused_parent_children));
+    lemmaRefInGraphOfWriteBookkeeping(s, left_childref, left_child.children);
+    ghost var s1: BBC.Variables := writeBookkeeping(s, left_childref, left_child.children);
+    lemmaChildrenConditionsPreservedWriteBookkeeping(s1, right_childref, right_child.children, Some(fused_parent_children));
+    lemmaRefInGraphOfWriteBookkeeping(s1, right_childref, right_child.children);
+    lemmaRefInGraphPreservedWriteBookkeeping(s1, right_childref, right_child.children, left_childref);
+    ghost var s2: BBC.Variables := writeBookkeeping(s1, right_childref, right_child.children);
+    lemmaChildrenConditionsOfReplace1With2(s2, fused_parent_children, slot, left_childref, right_childref);
+    ghost var s3: BBC.Variables := writeBookkeeping(s2, parentref, Some(replace1with2(fused_parent_children, left_childref, right_childref, slot)));
+    s3
+  }
+  function {:opaque} {:fuel 0, 0} splitCacheChanges(s: BBC.Variables, left_childref: BT.G.Reference, right_childref: BT.G.Reference, parentref: BT.G.Reference, slot: int, num_children_left: int, pivot: Key, left_child: Node, right_child: Node): (s': BBC.Variables)
+    requires s.Ready?
+    requires parentref in s.cache
+    requires BT.WFNode(s.cache[parentref])
+    requires PivotInsertable(s.cache[parentref].pivotTable, slot + 1, pivot)
+    requires s.cache[parentref].children.Some?
+    requires 0 <= slot < |s.cache[parentref].children.value|
+  {
+    ghost var fused_parent: G.Node := s.cache[parentref];
+    ghost var split_parent: Node := SplitParent(fused_parent, pivot, slot, left_childref, right_childref);
+    s.(cache := s.cache[left_childref := left_child][right_childref := right_child][parentref := split_parent])
+  }
+  function {:opaque} {:fuel 0, 0} splitDoChanges(s: BBC.Variables, child: Node, left_childref: BT.G.Reference, right_childref: BT.G.Reference, parentref: BT.G.Reference, fused_parent_children: seq<BT.G.Reference>, slot: int): (s': BBC.Variables)
+    requires s.Ready?
+    requires parentref in s.cache
+    requires BT.WFNode(s.cache[parentref])
+    requires BT.WFNode(child)
+    requires s.cache[parentref].children.Some?
+    requires 0 <= slot < |s.cache[parentref].children.value|
+    requires 0 <= slot < |fused_parent_children|
+    requires |child.buckets| >= 2
+    requires s.WriteAllocConditions()
+    requires ChildrenConditions(s, Some(fused_parent_children))
+    requires ChildrenConditions(s, child.children)
+    requires |fused_parent_children| < MaxNumChildren()
+  {
+    ghost var num_children_left: int := |child.buckets| / 2;
+    ghost var pivot: Key := GetKey(child.pivotTable, num_children_left);
+    if PivotInsertable(s.cache[parentref].pivotTable, slot + 1, pivot) then
+      lemmaChildrenConditionsSplitChild(s, child, num_children_left);
+      ghost var left_child: Node := SplitChildLeft(child, num_children_left);
+      ghost var right_child: Node := SplitChildRight(child, num_children_left);
+      ghost var s3: BBC.Variables := splitBookkeeping(s, left_childref, right_childref, parentref, fused_parent_children, left_child, right_child, slot);
+      ghost var s': BC.Variables := splitCacheChanges(s3, left_childref, right_childref, parentref, slot, num_children_left, pivot, left_child, right_child);
+      s'
+    else
+      s
+  }
+  function {:opaque} {:fuel 0, 0} splitChild(s: BBC.Variables, parentref: BT.G.Reference, childref: BT.G.Reference, slot: int, lbound: Key, ubound: Option<Key>, refUpperBound: uint64): (s': BBC.Variables)
+    requires s.Ready?
+    requires BBC.Inv(s)
+    requires parentref in s.cache
+    requires childref in s.cache
+    requires BT.WFNode(s.cache[parentref])
+    requires BT.WFNode(s.cache[childref])
+    requires s.cache[parentref].children.Some?
+    requires 0 <= slot < |s.cache[parentref].children.value|
+    requires s.cache[parentref].children.value[slot] == childref
+    requires ValidSplitKey(s.cache[childref], lbound, ubound)
+    requires ChildrenConditions(s, s.cache[childref].children)
+    requires ChildrenConditions(s, s.cache[parentref].children)
+    requires |s.cache[parentref].children.value| < MaxNumChildren()
+    requires forall r: uint64 | r in s.ephemeralIndirectionTable.graph :: r <= refUpperBound
+  {
+    ghost var fused_parent: G.Node := s.cache[parentref];
+    ghost var fused_child: G.Node := s.cache[childref];
+    ghost var child: Node := CutoffNode(fused_child, lbound, ubound);
+    lemmaChildrenConditionsCutoffNode(s, fused_child, lbound, ubound);
+    if |child.pivotTable| == 2 then
+      s
+    else
+      ghost var left_childref: Option<BT.G.Reference> := getFreeRef(s, refUpperBound); if left_childref.None? then s else ghost var right_childref: Option<BT.G.Reference> := getFreeRef2(s, left_childref.value, refUpperBound); if right_childref.None? then s else splitDoChanges(s, child, left_childref.value, right_childref.value, parentref, fused_parent.children.value, slot)
+  }
+  function {:opaque} {:fuel 0, 0} doSplit(s: BBC.Variables, parentref: BT.G.Reference, childref: BT.G.Reference, slot: int, refUpperBound: uint64): (s': BBC.Variables)
+    requires s.Ready?
+    requires BBC.Inv(s)
+    requires childref in s.ephemeralIndirectionTable.graph
+    requires parentref in s.ephemeralIndirectionTable.graph
+    requires childref in s.cache
+    requires parentref in s.cache
+    requires s.cache[parentref].children.Some?
+    requires |s.cache[parentref].buckets| <= MaxNumChildren() - 1
+    requires 0 <= slot < |s.cache[parentref].children.value|
+    requires s.cache[parentref].children.value[slot] == childref
+    requires forall r: uint64 | r in s.ephemeralIndirectionTable.graph :: r <= refUpperBound
+  {
+    if s.frozenIndirectionTable.Some? && s.frozenIndirectionTable.value.hasEmptyLoc(parentref) then
+      s
+    else
+      ghost var fused_parent: G.Node := s.cache[parentref]; ghost var fused_child: G.Node := s.cache[childref]; if !(Keyspace.lte(fused_child.pivotTable[0], fused_parent.pivotTable[slot]) && Keyspace.lte(fused_parent.pivotTable[slot + 1], Last(fused_child.pivotTable))) then s else lemmaChildrenConditionsOfNode(s, parentref); lemmaChildrenConditionsOfNode(s, childref); ghost var lbound: Key := getlbound(fused_parent, slot); ghost var ubound: Option<Key> := getubound(fused_parent, slot); if ValidSplitKey(fused_child, lbound, ubound) && ValidSplitKey(fused_parent, lbound, ubound) then splitChild(s, parentref, childref, slot, lbound, ubound, refUpperBound) else s
+  }
+  lemma {:timeLimitMultiplier 3} doSplitCorrect(s: BBC.Variables, parentref: BT.G.Reference, childref: BT.G.Reference, slot: int, refUpperBound: uint64)
+    requires doSplit.requires(s, parentref, childref, slot, refUpperBound)
+    requires s.totalCacheSize() <= MaxCacheSize() - 2
+    ensures ghost var s': BC.Variables := doSplit(s, parentref, childref, slot, refUpperBound); s'.Ready? && s'.totalCacheSize() <= MaxCacheSize() && StateBCImpl.WFCache(s'.cache) && betree_next(s, s')
+  {
+    ghost var s': BBC.Variables := doSplit(s, parentref, childref, slot, refUpperBound);
+    reveal_doSplit();
+    if s.frozenIndirectionTable.Some? && s.frozenIndirectionTable.value.hasEmptyLoc(parentref) {
+      assert noop(s, s);
+      return;
+    }
+    ghost var fused_parent: G.Node := s.cache[parentref];
+    ghost var fused_child: G.Node := s.cache[childref];
+    if !(Keyspace.lte(fused_child.pivotTable[0], fused_parent.pivotTable[slot]) && Keyspace.lte(fused_parent.pivotTable[slot + 1], Last(fused_child.pivotTable))) {
+      assert noop(s, s);
+      return;
+    }
+    lemmaChildrenConditionsOfNode(s, parentref);
+    lemmaChildrenConditionsOfNode(s, childref);
+    ghost var lbound: Key := getlbound(fused_parent, slot);
+    ghost var ubound: Option<Key> := getubound(fused_parent, slot);
+    if !(ValidSplitKey(fused_child, lbound, ubound) && ValidSplitKey(fused_parent, lbound, ubound)) {
+      assert noop(s, s);
+      return;
+    }
+    reveal_splitChild();
+    ghost var child: Node := CutoffNode(fused_child, lbound, ubound);
+    lemmaChildrenConditionsCutoffNode(s, fused_child, lbound, ubound);
+    if |child.pivotTable| == 2 {
+      assert noop(s, s);
+      return;
+    }
+    ghost var left_childref: Option<BT.G.Reference> := getFreeRef(s, refUpperBound);
+    if left_childref.None? {
+      assert noop(s, s);
+      return;
+    }
+    ghost var right_childref: Option<BT.G.Reference> := getFreeRef2(s, left_childref.value, refUpperBound);
+    if right_childref.None? {
+      assert noop(s, s);
+      return;
+    }
+    reveal_splitDoChanges();
+    ghost var num_children_left: int := |child.buckets| / 2;
+    ghost var pivot: Key := GetKey(child.pivotTable, num_children_left);
+    if !PivotInsertable(fused_parent.pivotTable, slot + 1, pivot) {
+      assert noop(s, s);
+      return;
+    }
+    lemmaChildrenConditionsSplitChild(s, child, num_children_left);
+    ghost var left_child: Node := SplitChildLeft(child, num_children_left);
+    ghost var right_child: Node := SplitChildRight(child, num_children_left);
+    ghost var split_parent: Node := SplitParent(fused_parent, pivot, slot, left_childref.value, right_childref.value);
+    lemmaChildrenConditionsPreservedWriteBookkeeping(s, left_childref.value, left_child.children, right_child.children);
+    lemmaChildrenConditionsPreservedWriteBookkeeping(s, left_childref.value, left_child.children, fused_parent.children);
+    lemmaRefInGraphOfWriteBookkeeping(s, left_childref.value, left_child.children);
+    ghost var s1: BBC.Variables := writeWithNode(s, left_childref.value, left_child);
+    ghost var s2: BC.Variables := writeWithNode(s1, right_childref.value, right_child);
+    lemmaChildrenConditionsOfReplace1With2(s2, fused_parent.children.value, slot, left_childref.value, right_childref.value);
+    reveal_writeBookkeeping();
+    reveal_splitCacheChanges();
+    reveal_splitBookkeeping();
+    ghost var s3: BBC.Variables := writeWithNode(s2, parentref, split_parent);
+    assert s' == s3;
+    ghost var splitStep: NodeFusion := NodeFusion(parentref, childref, left_childref.value, right_childref.value, fused_parent, split_parent, fused_child, left_child, right_child, slot, num_children_left, pivot);
+    PBSWF.ValidSplitWritesWFNodes(splitStep);
+    lemmaBlockPointsToValidReferences(s, childref);
+    assert BC.BlockPointsToValidReferences(fused_child, s.ephemeralIndirectionTable.graph);
+    lemmaSplitChildValidReferences(fused_child, child, num_children_left, s.ephemeralIndirectionTable.graph, lbound, ubound);
+    writeNewRefIsAlloc(s, left_childref.value, left_child);
+    writeNewRefIsAlloc(s1, right_childref.value, right_child);
+    lemmaBlockPointsToValidReferences(s, parentref);
+    assert BC.BlockPointsToValidReferences(fused_parent, s2.ephemeralIndirectionTable.graph);
+    lemmaSplitParentValidReferences(fused_parent, pivot, slot, left_childref.value, right_childref.value, s2.ephemeralIndirectionTable.graph);
+    assert child == CutoffNode(fused_child, lbound, ubound);
+    assert 1 <= num_children_left < |child.buckets|;
+    assert splitStep.num_children_left == num_children_left;
+    assert splitStep.fused_child == fused_child;
+    assert left_childref.value != right_childref.value;
+    assert ValidSplit(splitStep);
+    ghost var step: BetreeStep := BetreeSplit(splitStep);
+    ghost var ops: seq<Op> := [BT.G.AllocOp(left_childref.value, left_child), BT.G.AllocOp(right_childref.value, right_child), BT.G.WriteOp(parentref, split_parent)];
+    assert ops == BetreeStepOps(step);
+    BC.MakeTransaction3(s, s1, s2, s', ops);
+    assert stepsBetree(s, s', AdvanceOp(UI.NoOp, true), step);
+  }
+Dafny program verifier did not attempt verification

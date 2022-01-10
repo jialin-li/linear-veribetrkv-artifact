@@ -1,0 +1,43 @@
+// HandleReadResponseImpl.i.dfy
+module HandleReadResponseImpl {
+  method readResponse(inout old_s: Full, io: DiskIOHandler) returns (s: Full)
+  {
+    s := old_s;
+    var id: D.ReqId, addr: uint64, bytes: seq<byte> := io.getReadResult();
+    var loc: Location := DiskLayout.Location(addr, |bytes| as uint64);
+    if ValidNodeLocation(loc) {
+      if s.bc.Ready? {
+        var _inout_tmp_0: ImplVariables;
+        _inout_tmp_0 := IOImpl.PageInNodeResp(inout s.bc, io);
+        s := s.(bc := _inout_tmp_0);
+      } else {
+        print "readResponse: doing nothing\n";
+      }
+    } else if ValidIndirectionTableLocation(loc) {
+      if s.bc.Loading? {
+        var _inout_tmp_1: ImplVariables;
+        _inout_tmp_1 := IOImpl.PageInIndirectionTableResp(inout s.bc, io);
+        s := s.(bc := _inout_tmp_1);
+      } else {
+        print "readResponse: doing nothing\n";
+      }
+    } else if ValidJournalLocation(loc) {
+      if s.jc.status.StatusLoadingOther? {
+        var _inout_tmp_2: Committer;
+        _inout_tmp_2 := s.jc.pageInJournalResp(inout s.jc, io);
+        s := s.(jc := _inout_tmp_2);
+      } else 
+    } else if loc == Superblock1Location() {
+      var _inout_tmp_3: Committer;
+      _inout_tmp_3 := s.jc.readSuperblockResp(inout s.jc, io, 0);
+      s := s.(jc := _inout_tmp_3);
+    } else if loc == Superblock2Location() {
+      var _inout_tmp_4: Committer;
+      _inout_tmp_4 := s.jc.readSuperblockResp(inout s.jc, io, 1);
+      s := s.(jc := _inout_tmp_4);
+    } else {
+      print "readResponse: doing nothing\n";
+    }
+  }
+}
+Dafny program verifier did not attempt verification

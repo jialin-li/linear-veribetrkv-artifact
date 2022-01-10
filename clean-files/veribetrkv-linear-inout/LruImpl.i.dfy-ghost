@@ -1,0 +1,3 @@
+/home/root/veribetrkv-linear/lib/DataStructures/LruImpl.i.dfy(88,4): Warning: the 'protected' modifier is no longer supported; to restrict access from outside the module, use a 'provides' clause in the module's export set; if you're trying to add conjuncts to a predicate in a refinement module, see Test/dafny3/CachedContainer.dfy, Test/dafny2/StoreAndRetrieve.dfy, and Test/dafny2/MonotonicHeapstate.dfy in the Dafny test suite on github
+/home/root/veribetrkv-linear/lib/DataStructures/LruImpl.i.dfy(15,9): Error: module MutableMap does not exist
+1 resolution/type errors detected in LruImpl.i.dfy

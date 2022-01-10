@@ -1,0 +1,46 @@
+// DeallocImpl.i.dfy
+module DeallocImpl {
+  method Dealloc(k: ImplConstants, s: ImplVariables, io: DiskIOHandler, ref: BT.G.Reference)
+    requires Inv(k, s)
+    requires io.initialized()
+    requires DeallocModel.deallocable(s.I(), ref)
+    requires io !in s.Repr()
+    modifies io, s.Repr()
+    ensures WellUpdated(s)
+    ensures s.ready
+    ensures (s.I(), IIO(io)) == DeallocModel.Dealloc(Ic(k), old(s.I()), old(IIO(io)), ref)
+    decreases k, s, io, ref
+  {
+    DeallocModel.reveal_Dealloc();
+    if s.frozenIndirectionTable != null {
+      var b: bool := s.frozenIndirectionTable.HasEmptyLoc(ref);
+      if b {
+        print "giving up; dealloc can't run because frozen isn't written";
+        return;
+      }
+    }
+    if BC.OutstandingRead(ref) in s.outstandingBlockReads.Values {
+      print "giving up; dealloc can't dealloc because of outstanding read\n";
+      return;
+    }
+    BookkeepingModel.lemmaIndirectionTableLocIndexValid(Ic(k), s.I(), ref);
+    var oldLoc: Option<Location> := s.ephemeralIndirectionTable.RemoveRef(ref);
+    s.lru.Remove(ref);
+    s.cache.Remove(ref);
+    if oldLoc.Some? {
+      s.blockAllocator.MarkFreeEphemeral(oldLoc.value.addr / NodeBlockSizeUint64());
+    }
+    ghost var s1: SM.BCVariables := s.I();
+    ghost var s2: BCVariables := DeallocModel.Dealloc(Ic(k), old(s.I()), old(IIO(io)), ref).0;
+    assert s1.cache == s2.cache;
+  }
+  method FindDeallocable(s: ImplVariables) returns (ref: Option<Reference>)
+    requires s.WF()
+    requires s.ready
+    ensures ref == DeallocModel.FindDeallocable(s.I())
+    decreases s
+  {
+    DeallocModel.reveal_FindDeallocable();
+    ref := s.ephemeralIndirectionTable.FindDeallocable();
+  }
+}

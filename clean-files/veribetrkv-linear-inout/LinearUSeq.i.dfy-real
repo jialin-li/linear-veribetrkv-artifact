@@ -1,0 +1,50 @@
+  var Length: int  // immutable
+  static method Alloc() returns (useq: USeq)
+  {
+    var size: uint64 := 128;
+    var dlist: DList<uint64> := DList.DList<uint64>.Alloc(size + 1);
+    var ptr_map: LinearHashMap<uint64> := LinearMutableMap.Constructor(size);
+    useq := USeq(dlist, ptr_map);
+  }
+  method Free()
+  {
+    var USeq(dlist: DList.DList<uint64>, ptr_map: LinearMutableMap.LinearHashMap<uint64>) := this;
+    dlist.Free();
+    LinearMutableMap.Destructor(ptr_map);
+  }
+  method Add(x: uint64)
+  {
+    var found: Option<uint64> := LinearMutableMap.Get(self.ptr_map, x);
+    if !found.Some? {
+      var p: uint64 := self.dlist.InsertBefore(0, x);
+      LinearMutableMap.Insert(inout self.ptr_map, x, p);
+    }
+  }
+  method Remove(x: uint64)
+  {
+    var removed: Option<uint64> := LinearMutableMap.RemoveAndGet(inout self.ptr_map, x);
+    if removed.Some? {
+      var Some(p: uint64) := removed;
+      self.dlist.Remove(p);
+    }
+  }
+  function method First(): (x: uint64)
+  {
+    this.dlist.Get(this.dlist.Next(0))
+  }
+  function method FirstOpt(): (x: Option<uint64>)
+  {
+    var p: uint64 := this.dlist.Next(0);
+    if p == 0 then
+      None
+    else
+      Some(this.dlist.Get(p))
+  }
+  method Clone() returns (useq': USeq)
+  {
+    var USeq(dlist: DList.DList<uint64>, ptr_map: LinearMutableMap.LinearHashMap<uint64>) := this;
+    var dlist': DList<uint64> := dlist.Clone();
+    var ptr_map': LinearHashMap<uint64> := LinearMutableMap.Clone(ptr_map);
+    useq' := USeq(dlist', ptr_map');
+  }
+Dafny program verifier did not attempt verification

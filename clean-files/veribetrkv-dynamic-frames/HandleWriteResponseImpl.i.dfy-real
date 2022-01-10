@@ -1,0 +1,30 @@
+// HandleWriteResponseImpl.i.dfy
+module HandleWriteResponseImpl {
+  method writeBackJournalResp(k: ImplConstants, cm: Committer, io: DiskIOHandler)
+    modifies cm.Repr
+  {
+    var id: D.ReqId, addr: uint64, len: uint64 := io.getWriteResult();
+    cm.outstandingJournalWrites := cm.outstandingJournalWrites - {id};
+  }
+  method writeResponse(k: ImplConstants, s: Full, io: DiskIOHandler)
+    modifies s.Repr
+  {
+    var id: D.ReqId, addr: uint64, len: uint64 := io.getWriteResult();
+    var loc: Location := DiskLayout.Location(addr, len);
+    if ValidNodeLocation(loc) && s.bc.ready && id in s.bc.outstandingBlockWrites {
+      IOImpl.writeNodeResponse(k, s.bc, io);
+    } else if ValidIndirectionTableLocation(loc) && s.bc.ready && s.bc.outstandingIndirectionTableWrite == Some(id) {
+      var frozen_loc: Location := IOImpl.writeIndirectionTableResponse(k, s.bc, io);
+      CommitterCommitImpl.receiveFrozenLoc(k, s.jc, frozen_loc);
+    } else if s.jc.status.StatusReady? && ValidJournalLocation(loc) {
+      writeBackJournalResp(k, s.jc, io);
+    } else if ValidSuperblockLocation(loc) && Some(id) == s.jc.superblockWrite {
+      if s.jc.status.StatusReady? && s.jc.commitStatus.CommitAdvanceLocation? {
+        IOImpl.cleanUp(k, s.bc);
+      }
+      CommitterCommitImpl.writeBackSuperblockResp(k, s.jc);
+    } else {
+      print "writeResponse: doing nothing\n";
+    }
+  }
+}

@@ -1,0 +1,4 @@
+// BlockAllocatorModel.i.dfy
+module BlockAllocatorModel {
+  datatype BlockAllocatorModel = BlockAllocatorModel(ephemeral: BitmapModel.BitmapModelT, frozen: Option<BitmapModel.BitmapModelT>, persistent: BitmapModel.BitmapModelT, outstanding: BitmapModel.BitmapModelT, full: BitmapModel.BitmapModelT)
+}

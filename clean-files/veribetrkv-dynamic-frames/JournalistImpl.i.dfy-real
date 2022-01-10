@@ -1,0 +1,150 @@
+// JournalistImpl.i.dfy
+module JournalistImpl {
+  class Journalist {
+    var journalEntries: array<JournalEntry>
+    var start: uint64
+    var len1: uint64
+    var len2: uint64
+    var replayJournal: seq<JournalEntry>
+    var replayIdx: uint64
+    var journalFront: Option<seq<JournalBlock>>
+    var journalBack: Option<seq<JournalBlock>>
+    var writtenJournalBlocks: uint64
+    var frozenJournalBlocks: uint64
+    var inMemoryWeight: uint64
+    ghost var Repr: set<object>
+    constructor ()
+    {
+      new;
+      this.journalEntries := NativeArrays.newArrayFill(4096, JournalInsert([], []));
+      this.start := 0;
+      this.len1 := 0;
+      this.len2 := 0;
+      this.replayJournal := [];
+      this.replayIdx := 0;
+      this.journalFront := None;
+      this.journalBack := None;
+      this.writtenJournalBlocks := 0;
+      this.frozenJournalBlocks := 0;
+      this.inMemoryWeight := 0;
+    }
+    method hasFrozenJournal() returns (b: bool)
+    {
+      return this.len1 != 0;
+    }
+    method hasInMemoryJournal() returns (b: bool)
+    {
+      return this.len2 != 0;
+    }
+    method packageFrozenJournal() returns (s: seq<byte>)
+      modifies this.Repr
+    {
+      s := MarshallJournalEntries(this.journalEntries, this.start, this.len1, this.frozenJournalBlocks);
+      this.start := JournalistModel.basic_mod(this.start + this.len1, this.journalEntries.Length as uint64);
+      this.len1 := 0;
+      this.writtenJournalBlocks := this.writtenJournalBlocks + this.frozenJournalBlocks;
+      this.frozenJournalBlocks := 0;
+    }
+    method packageInMemoryJournal() returns (s: seq<byte>)
+      modifies this.Repr
+    {
+      var numBlocks: uint64 := (this.inMemoryWeight + 4064 - 1) / 4064;
+      s := MarshallJournalEntries(this.journalEntries, this.start, this.len2, numBlocks);
+      this.start := 0;
+      this.len2 := 0;
+      this.inMemoryWeight := 0;
+      this.writtenJournalBlocks := this.writtenJournalBlocks + numBlocks;
+    }
+    method getWrittenJournalLen() returns (len: uint64)
+    {
+      return this.writtenJournalBlocks;
+    }
+    method setWrittenJournalLen(len: uint64)
+      modifies Repr
+    {
+      this.writtenJournalBlocks := len;
+      this.frozenJournalBlocks := 0;
+    }
+    method updateWrittenJournalLen(len: uint64)
+      modifies Repr
+    {
+      this.writtenJournalBlocks := len;
+    }
+    method freeze()
+      modifies Repr
+    {
+      this.len1 := this.len1 + this.len2;
+      this.len2 := 0;
+      this.frozenJournalBlocks := this.frozenJournalBlocks + (this.inMemoryWeight + 4064 - 1) / 4064;
+      this.inMemoryWeight := 0;
+    }
+    method canAppend(je: JournalEntry) returns (b: bool)
+    {
+      b := 4064 * (writtenJournalBlocks + frozenJournalBlocks) + inMemoryWeight + WeightJournalEntryUint64(je) + (if len2 == 0 then 8 else 0) <= 4064 * NumJournalBlocks();
+    }
+    method append(je: JournalEntry)
+      modifies Repr
+    {
+      if this.len1 + this.len2 < this.journalEntries.Length as uint64 {
+        var idx: uint64 := JournalistModel.basic_mod(start + len1 + len2, this.journalEntries.Length as uint64);
+        this.journalEntries[idx] := je;
+      } else {
+        var newLen: uint64 := this.journalEntries.Length as uint64 * 2;
+        var newArray: array?<JournalEntry> := NativeArrays.newArrayFill(newLen, JournalInsert([], []));
+        NativeArrays.CopyArrayIntoDifferentArray(this.journalEntries, this.start, newArray, 0, this.journalEntries.Length as uint64 - this.start);
+        NativeArrays.CopyArrayIntoDifferentArray(this.journalEntries, 0, newArray, this.journalEntries.Length as uint64 - this.start, this.start);
+        newArray[this.journalEntries.Length as uint64] := je;
+        this.journalEntries := newArray;
+        this.start := 0;
+      }
+      this.inMemoryWeight := this.inMemoryWeight + WeightJournalEntryUint64(je) + if this.len2 == 0 then 8 else 0;
+      this.len2 := this.len2 + 1;
+    }
+    method isReplayEmpty() returns (b: bool)
+    {
+      b := replayIdx == |replayJournal| as uint64;
+    }
+    method replayJournalTop() returns (je: JournalEntry)
+    {
+      je := replayJournal[replayIdx];
+    }
+    method replayJournalPop()
+      modifies Repr
+    {
+      replayIdx := replayIdx + 1;
+    }
+    method setFront(jr: JournalRange)
+      modifies Repr
+    {
+      journalFront := Some(jr);
+    }
+    method setBack(jr: JournalRange)
+      modifies Repr
+    {
+      journalBack := Some(jr);
+    }
+    method parseJournals() returns (success: bool)
+      modifies Repr
+    {
+      var fullRange: seq<JournalBlock> := (if journalFront.Some? then journalFront.value else []) + if journalBack.Some? then journalBack.value else [];
+      var p: Option<seq<JournalEntry>> := JournalistParsingImpl.ParseJournalRange(fullRange);
+      if p.Some? && |p.value| as uint64 <= JournalistModel.MaxPossibleEntries() {
+        journalFront := None;
+        journalBack := None;
+        replayJournal := p.value;
+        replayIdx := 0;
+        return true;
+      } else {
+        return false;
+      }
+    }
+    method hasFront() returns (b: bool)
+    {
+      b := journalFront.Some?;
+    }
+    method hasBack() returns (b: bool)
+    {
+      b := journalBack.Some?;
+    }
+  }
+}

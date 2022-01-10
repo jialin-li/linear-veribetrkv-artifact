@@ -1,0 +1,4 @@
+// LeafModel.i.dfy
+module LeafModel {
+}
+Dafny program verifier did not attempt verification

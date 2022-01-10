@@ -1,0 +1,4 @@
+// QueryModel.i.dfy
+module QueryModel {
+}
+Dafny program verifier did not attempt verification

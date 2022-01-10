@@ -1,0 +1,28 @@
+// Util.i.dfy
+module Common__Util_i {
+  method seqIntoArrayOpt<A>(s: seq<A>, a: array<A>)
+    modifies a
+  {
+    var i: uint64 := 0;
+    while i < |s| as uint64
+    {
+      a[i] := s[i];
+      i := i + 1;
+    }
+  }
+  method seqIntoArrayChar(s: seq<char>, a: array<char>)
+    modifies a
+  {
+    var i: uint64 := 0;
+    while i < |s| as uint64
+    {
+      a[i] := s[i];
+      i := i + 1;
+    }
+  }
+  function method SeqByteToUint16(bs: seq<byte>): uint16
+  {
+    bs[0 as uint64] as uint16 * 256 + bs[1 as uint64] as uint16
+  }
+}
+Dafny program verifier did not attempt verification

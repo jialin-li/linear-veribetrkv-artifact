@@ -1,0 +1,53 @@
+// Mkfs.i.dfy
+module MkfsImpl {
+  method Mkfs() returns (diskContents: map<Addr, seq<byte>>)
+    ensures MkfsModel.InitDiskContents(diskContents)
+    ensures ADM.BlocksDontIntersect(diskContents)
+  {
+    var s1addr: Addr := Superblock1Location().addr;
+    var s2addr: uint64 := Superblock2Location().addr;
+    var indirectionTableAddr: uint64 := IndirectionTable1Addr();
+    var nodeAddr: uint64 := NodeBlockSizeUint64() * MinNodeBlockIndexUint64();
+    var node: Node := Node.EmptyNode();
+    assert BT.WFNode(node.I()) by {
+      reveal_WeightBucketList();
+    }
+    var sector: Sector := SSI.SectorNode(node);
+    var bNode_array: array?<byte> := MarshallingImpl.MarshallCheckedSector(sector);
+    var bNode: seq<byte> := bNode_array[..];
+    sector.Free();
+    var nodeLoc: Location := Location(nodeAddr, |bNode| as uint64);
+    assert ValidNodeLocation(nodeLoc) by {
+      ValidNodeAddrMul(MinNodeBlockIndexUint64());
+    }
+    var sectorIndirectionTable: IndirectionTable := IT.IndirectionTable.Alloc(nodeLoc);
+    assert sectorIndirectionTable.I() == IndirectionTable(map[0 := nodeLoc], map[0 := []]);
+    assert BC.WFCompleteIndirectionTable(sectorIndirectionTable.I());
+    assert SSI.Inv(SSI.SectorIndirectionTable(sectorIndirectionTable));
+    var sectorIndirect: Sector := SSI.SectorIndirectionTable(sectorIndirectionTable);
+    var bIndirectionTable_array: array?<byte> := MarshallingImpl.MarshallCheckedSector(sectorIndirect);
+    assert bIndirectionTable_array != null;
+    var bIndirectionTable: seq<byte> := bIndirectionTable_array[..];
+    sectorIndirect.Free();
+    var indirectionTableLoc: Location := Location(indirectionTableAddr, |bIndirectionTable| as uint64);
+    assert ValidIndirectionTableLocation(indirectionTableLoc);
+    var sectorSuperblock: Sector := SSI.SectorSuperblock(Superblock(0, 0, 0, indirectionTableLoc));
+    var bSuperblock_array: array?<byte> := MarshallingImpl.MarshallCheckedSector(sectorSuperblock);
+    var bSuperblock: seq<byte> := bSuperblock_array[..];
+    sectorSuperblock.Free();
+    ghost var ghosty: bool := true;
+    if ghosty {
+      if overlap(Superblock1Location(), nodeLoc) {
+        overlappingLocsSameType(Superblock1Location(), nodeLoc);
+      }
+      if overlap(Superblock2Location(), nodeLoc) {
+        overlappingLocsSameType(Superblock2Location(), nodeLoc);
+      }
+      if overlap(indirectionTableLoc, nodeLoc) {
+        overlappingLocsSameType(indirectionTableLoc, nodeLoc);
+      }
+    }
+    diskContents := map[s1addr := bSuperblock, s2addr := bSuperblock, indirectionTableAddr := bIndirectionTable, nodeAddr := bNode];
+  }
+}
+Dafny program verifier did not attempt verification

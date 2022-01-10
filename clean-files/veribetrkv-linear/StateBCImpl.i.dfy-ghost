@@ -1,0 +1,129 @@
+// StateBCImpl.i.dfy
+module StateBCImpl {
+  type ImplVariables = Variables
+  type Reference = BT.G.Reference
+  datatype Variables = Ready(persistentIndirectionTable: IT.IndirectionTable, frozenIndirectionTable: lOption<IT.IndirectionTable>, ephemeralIndirectionTable: IT.IndirectionTable, persistentIndirectionTableLoc: DiskLayout.Location, frozenIndirectionTableLoc: Option<DiskLayout.Location>, outstandingIndirectionTableWrite: Option<BC.ReqId>, outstandingBlockWrites: map<BC.ReqId, BC.OutstandingWrite>, outstandingBlockReads: map<BC.ReqId, BC.OutstandingRead>, cache: LMutCache, lru: LinearLru.LinearLru, blockAllocator: BlockAllocatorImpl.BlockAllocator) | Loading(indirectionTableLoc: DiskLayout.Location, indirectionTableRead: Option<BC.ReqId>) | Unready {
+    method DebugAccumulate() returns (acc: DebugAccumulator.DebugAccumulator)
+      requires false
+      decreases this
+    {
+    }
+    predicate ConsistentBitmap()
+      requires Ready? && blockAllocator.Inv()
+      decreases this
+    {
+      ConsistentBitmapInteral(ephemeralIndirectionTable.I(), if frozenIndirectionTable.lSome? then lSome(frozenIndirectionTable.value.I()) else lNone, persistentIndirectionTable.I(), outstandingBlockWrites, blockAllocator.I())
+    }
+    function method TotalCacheSize(): (res: uint64)
+      requires Ready?
+      requires cache.Inv()
+      requires |cache.I()| + |outstandingBlockReads| < 18446744073709551616
+      ensures res as int == totalCacheSize()
+      decreases this
+    {
+      CacheImpl.CacheCount(cache) + |outstandingBlockReads| as uint64
+    }
+    function totalCacheSize(): int
+      requires Ready?
+      requires cache.Inv()
+      decreases this
+    {
+      |cache.I()| + |outstandingBlockReads|
+    }
+    predicate W()
+      decreases this
+    {
+      Ready? ==>
+        persistentIndirectionTable.Inv() &&
+        (frozenIndirectionTable.lSome? ==>
+          frozenIndirectionTable.value.Inv()) &&
+        ephemeralIndirectionTable.Inv() &&
+        lru.Inv() &&
+        cache.Inv() &&
+        blockAllocator.Inv()
+    }
+    predicate WFBCVars()
+      decreases this
+    {
+      W() &&
+      (Ready? ==>
+        LruModel.WF(lru.Queue()) &&
+        LruModel.I(lru.Queue()) == cache.I().Keys &&
+        totalCacheSize() <= MaxCacheSize() &&
+        ephemeralIndirectionTable.TrackingGarbage() &&
+        BlockAllocatorModel.Inv(blockAllocator.I()) &&
+        ConsistentBitmap() &&
+        WFCache(cache.I()))
+    }
+    predicate WriteAllocConditions()
+      decreases this
+    {
+      Ready? &&
+      ephemeralIndirectionTable.Inv() &&
+      ephemeralIndirectionTable.TrackingGarbage() &&
+      blockAllocator.Inv() &&
+      (forall loc: Location {:trigger ValidNodeLocation(loc)} {:trigger loc in ephemeralIndirectionTable.I().locs.Values} | loc in ephemeralIndirectionTable.I().locs.Values :: 
+        ValidNodeLocation(loc)) &&
+      ConsistentBitmap() &&
+      BlockAllocatorModel.Inv(blockAllocator.I()) &&
+      BC.AllLocationsForDifferentRefsDontOverlap(ephemeralIndirectionTable.I())
+    }
+    function I(): BBC.Variables
+      requires W()
+      decreases this
+    {
+      if Ready? then
+        BC.Ready(persistentIndirectionTable.I(), if frozenIndirectionTable.lSome? then Some(frozenIndirectionTable.value.I()) else None, ephemeralIndirectionTable.I(), persistentIndirectionTableLoc, frozenIndirectionTableLoc, outstandingIndirectionTableWrite, outstandingBlockWrites, outstandingBlockReads, cache.I())
+      else if Loading? then
+        BC.LoadingIndirectionTable(indirectionTableLoc, indirectionTableRead)
+      else
+        BC.Unready
+    }
+    predicate Inv()
+      decreases this
+    {
+      WFBCVars() &&
+      BBC.Inv(I())
+    }
+    predicate ChildrenConditions(succs: Option<seq<BT.G.Reference>>)
+      requires Ready?
+      decreases this, succs
+    {
+      succs.Some? ==>
+        |succs.value| <= MaxNumChildren() &&
+        IT.IndirectionTable.SuccsValid(succs.value, ephemeralIndirectionTable.graph)
+    }
+    static method Constructor() returns (v: Variables)
+      ensures v.Unready?
+      ensures v.WFBCVars()
+    {
+      v := Unready;
+    }
+  }
+  predicate WFCache(cache: map<Reference, BT.G.Node>)
+    decreases cache
+  {
+    forall ref: NativeTypes.uint64 {:trigger cache[ref]} {:trigger ref in cache} | ref in cache :: 
+      WFNode(cache[ref])
+  }
+  predicate IsLocAllocOutstanding(outstanding: map<BC.ReqId, BC.OutstandingWrite>, i: int)
+    decreases outstanding, i
+  {
+    !forall id: uint64 {:trigger outstanding[id]} {:trigger id in outstanding} | id in outstanding :: outstanding[id].loc.addr as int != i * NodeBlockSize() as int
+  }
+  predicate {:opaque} {:fuel 0, 0} ConsistentBitmapInteral(ephemeralIndirectionTable: SectorType.IndirectionTable, frozenIndirectionTable: lOption<SectorType.IndirectionTable>, persistentIndirectionTable: SectorType.IndirectionTable, outstandingBlockWrites: map<BC.ReqId, BC.OutstandingWrite>, blockAllocator: BlockAllocatorModel.BlockAllocatorModel)
+    decreases ephemeralIndirectionTable, frozenIndirectionTable, persistentIndirectionTable, outstandingBlockWrites, blockAllocator
+  {
+    (forall i: int {:trigger IT.IndirectionTable.IsLocAllocBitmap(blockAllocator.ephemeral, i)} {:trigger ephemeralIndirectionTable.IsLocAllocIndirectionTable(i)} :: 
+      ephemeralIndirectionTable.IsLocAllocIndirectionTable(i) <==> IT.IndirectionTable.IsLocAllocBitmap(blockAllocator.ephemeral, i)) &&
+    (forall i: int {:trigger IT.IndirectionTable.IsLocAllocBitmap(blockAllocator.persistent, i)} {:trigger persistentIndirectionTable.IsLocAllocIndirectionTable(i)} :: 
+      persistentIndirectionTable.IsLocAllocIndirectionTable(i) <==> IT.IndirectionTable.IsLocAllocBitmap(blockAllocator.persistent, i)) &&
+    (frozenIndirectionTable.lSome? <==> blockAllocator.frozen.Some?) &&
+    (frozenIndirectionTable.lSome? ==>
+      forall i: int {:trigger IT.IndirectionTable.IsLocAllocBitmap(blockAllocator.frozen.value, i)} {:trigger frozenIndirectionTable.value.IsLocAllocIndirectionTable(i)} :: 
+        frozenIndirectionTable.value.IsLocAllocIndirectionTable(i) <==> IT.IndirectionTable.IsLocAllocBitmap(blockAllocator.frozen.value, i)) &&
+    forall i: int {:trigger IT.IndirectionTable.IsLocAllocBitmap(blockAllocator.outstanding, i)} {:trigger IsLocAllocOutstanding(outstandingBlockWrites, i)} :: 
+      IsLocAllocOutstanding(outstandingBlockWrites, i) <==> IT.IndirectionTable.IsLocAllocBitmap(blockAllocator.outstanding, i)
+  }
+}
+Dafny program verifier did not attempt verification

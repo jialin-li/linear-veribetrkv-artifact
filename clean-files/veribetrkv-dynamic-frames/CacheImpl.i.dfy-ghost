@@ -1,0 +1,231 @@
+// CacheImpl.i.dfy
+module CacheImpl {
+  class MutCache {
+    var cache: MM.ResizingHashMap<Node>
+    ghost var Repr: set<object>
+    method DebugAccumulate() returns (acc: DebugAccumulator.DebugAccumulator)
+      requires false
+    {
+      acc := DebugAccumulator.EmptyAccumulator();
+      var a: DebugAccumulator.AccRec := new DebugAccumulator.AccRec(cache.Count, "Node");
+      acc := DebugAccumulator.AccPut(acc, "cache", a);
+    }
+    constructor ()
+      ensures Inv()
+      ensures I() == map[]
+      ensures fresh(Repr)
+    {
+      cache := new MM.ResizingHashMap<Node>(128);
+      new;
+      Repr := {this} + cache.Repr + MutCacheBucketRepr();
+    }
+    protected function MutCacheBucketRepr(): set<object>
+      reads this, cache, set ref: uint64 {:trigger cache.Contents[ref]} {:trigger ref in cache.Contents} | ref in cache.Contents :: cache.Contents[ref]
+      decreases (set ref: uint64 {:trigger cache.Contents[ref]} {:trigger ref in cache.Contents} | ref in cache.Contents :: cache.Contents[ref]) + {this, cache}
+    {
+      set ref: uint64, o: object {:trigger o in cache.Contents[ref].Repr} | ref in cache.Contents && o in cache.Contents[ref].Repr :: o
+    }
+    protected predicate CacheReprDisjoint(contents: map<BT.G.Reference, Node>)
+      reads set ref: NativeTypes.uint64 {:trigger contents[ref]} {:trigger ref in contents} | ref in contents :: contents[ref]
+      decreases set ref: NativeTypes.uint64 {:trigger contents[ref]} {:trigger ref in contents} | ref in contents :: contents[ref], contents
+    {
+      forall ref1: NativeTypes.uint64, ref2: NativeTypes.uint64 {:trigger contents[ref2], contents[ref1]} {:trigger contents[ref2], ref1 in contents} {:trigger contents[ref1], ref2 in contents} {:trigger ref2 in contents, ref1 in contents} | ref1 in contents && ref2 in contents && ref1 != ref2 :: 
+        contents[ref1].Repr !! contents[ref2].Repr
+    }
+    protected predicate Inv()
+      reads this, Repr
+      ensures Inv() ==> this in Repr
+      decreases Repr + {this}
+    {
+      cache in Repr &&
+      (forall ref: uint64 {:trigger cache.Contents[ref]} {:trigger ref in cache.Contents} | ref in cache.Contents :: 
+        cache.Contents[ref] in Repr) &&
+      Repr == {this} + cache.Repr + MutCacheBucketRepr() &&
+      CacheReprDisjoint(cache.Contents) &&
+      (forall ref: uint64 {:trigger cache.Contents[ref]} {:trigger ref in cache.Contents} | ref in cache.Contents :: 
+        cache.Contents[ref].Repr !! cache.Repr) &&
+      (forall ref: uint64 {:trigger cache.Contents[ref]} {:trigger ref in cache.Contents} | ref in cache.Contents :: 
+        this !in cache.Contents[ref].Repr) &&
+      this !in cache.Repr &&
+      cache.Inv() &&
+      forall ref: uint64 {:trigger cache.Contents[ref]} {:trigger ref in cache.Contents} | ref in cache.Contents :: 
+        cache.Contents[ref].Inv()
+    }
+    protected function I(): map<BT.G.Reference, IM.Node>
+      requires Inv()
+      reads this, Repr
+      decreases Repr + {this}
+    {
+      map ref: uint64 {:trigger cache.Contents[ref]} {:trigger ref in cache.Contents} | ref in cache.Contents :: cache.Contents[ref].I()
+    }
+    protected function ptr(ref: BT.G.Reference): Option<Node>
+      requires Inv()
+      reads Repr
+      ensures ptr(ref).None? ==> ref !in I()
+      ensures ptr(ref).Some? ==> ref in I() && ptr(ref).value.Inv() && I()[ref] == ptr(ref).value.I()
+      decreases Repr, ref
+    {
+      if ref in cache.Contents then
+        Some(cache.Contents[ref])
+      else
+        None
+    }
+    method GetOpt(ref: BT.G.Reference) returns (node: Option<Node>)
+      requires Inv()
+      ensures node == ptr(ref)
+      decreases ref
+    {
+      node := cache.Get(ref);
+    }
+    lemma  LemmaNodeReprLeRepr(ref: BT.G.Reference)
+      requires Inv()
+      ensures ptr(ref).Some? ==> ptr(ref).value.Repr <= Repr
+      decreases ref
+    {
+    }
+    lemma  LemmaSizeEqCount()
+      requires Inv()
+      ensures |I()| == |cache.Contents|
+    {
+      assert I().Keys == cache.Contents.Keys;
+      assert |I()| == |I().Keys| == |cache.Contents.Keys| == |cache.Contents|;
+    }
+    protected function method Count(): (c: uint64)
+      requires Inv()
+      reads this, Repr
+      ensures c as int == |I()|
+      decreases Repr + {this}
+    {
+      LemmaSizeEqCount();
+      cache.Count
+    }
+    method Insert(ref: BT.G.Reference, node: Node)
+      requires Inv()
+      requires node.Inv()
+      requires Repr !! node.Repr
+      requires |I()| <= 65536
+      modifies Repr
+      ensures Inv()
+      ensures I() == old(I()[ref := node.I()])
+      ensures forall r: NativeTypes.uint64 {:trigger old(ptr(r))} {:trigger ptr(r)} | r != ref :: ptr(r) == old(ptr(r))
+      ensures forall o: object {:trigger o in old(node.Repr)} {:trigger o in old(Repr)} {:trigger o in Repr} | o in Repr :: o in old(Repr) || o in old(node.Repr) || fresh(o)
+      decreases ref, node
+    {
+      LemmaSizeEqCount();
+      cache.Insert(ref, node);
+      assert cache.Contents[ref] == node;
+      Repr := {this} + cache.Repr + MutCacheBucketRepr();
+      assert Inv();
+    }
+    method Remove(ref: BT.G.Reference)
+      requires Inv()
+      modifies Repr
+      ensures Inv()
+      ensures I() == MapRemove1(old(I()), ref)
+      ensures forall o: object {:trigger o in old(Repr)} {:trigger o in Repr} | o in Repr :: o in old(Repr) || fresh(o)
+      decreases ref
+    {
+      LemmaSizeEqCount();
+      cache.Remove(ref);
+      Repr := {this} + cache.Repr + MutCacheBucketRepr();
+      assert Inv();
+    }
+    method MoveAndReplace(oldref: BT.G.Reference, newref: BT.G.Reference, node: Node)
+      requires Inv()
+      requires node.Inv()
+      requires Repr !! node.Repr
+      requires |I()| <= 65536
+      requires oldref in I()
+      modifies Repr
+      ensures Inv()
+      ensures I() == old(I()[newref := I()[oldref]][oldref := node.I()])
+      ensures forall o: object {:trigger o in old(node.Repr)} {:trigger o in old(Repr)} {:trigger o in Repr} | o in Repr :: o in old(Repr) || o in old(node.Repr) || fresh(o)
+      decreases oldref, newref, node
+    {
+      LemmaSizeEqCount();
+      var oldnodeOpt: Option<Node> := cache.Get(oldref);
+      var oldnode: Node := oldnodeOpt.value;
+      cache.Insert(newref, oldnode);
+      cache.Insert(oldref, node);
+      Repr := {this} + cache.Repr + MutCacheBucketRepr();
+      assert Inv();
+    }
+    method Overwrite(ref: BT.G.Reference, node: Node)
+      requires Inv()
+      requires node.Inv()
+      requires ref in I()
+      requires forall o: object {:trigger o in Repr} {:trigger o in cache.Contents[ref].Repr} {:trigger o in node.Repr} | o in node.Repr :: o in cache.Contents[ref].Repr || o !in Repr
+      requires |I()| <= 65536
+      modifies Repr
+      ensures Inv()
+      ensures I() == old(I()[ref := node.I()])
+      ensures forall o: object {:trigger o in old(node.Repr)} {:trigger o in old(Repr)} {:trigger o in Repr} | o in Repr :: o in old(Repr) || o in old(node.Repr) || fresh(o)
+      decreases ref, node
+    {
+      LemmaSizeEqCount();
+      cache.Insert(ref, node);
+      assert cache.Contents[ref] == node;
+      Repr := {this} + cache.Repr + MutCacheBucketRepr();
+      assert Inv();
+    }
+    method UpdateNodeSlot(ghost ref: BT.G.Reference, node: Node, slot: uint64, bucket: MutBucket, childref: BT.G.Reference)
+      requires Inv()
+      requires bucket.Inv()
+      requires ref in I()
+      requires I()[ref].children.Some?
+      requires 0 <= slot as int < |I()[ref].children.value|
+      requires 0 <= slot as int < |I()[ref].buckets|
+      requires slot as int + 1 < 18446744073709551616
+      requires bucket.Repr !! Repr
+      requires |I()| <= 65536
+      requires ptr(ref) == Some(node)
+      modifies Repr
+      ensures Inv()
+      ensures I() == old(I()[ref := IM.Node(I()[ref].pivotTable, Some(I()[ref].children.value[slot as int := childref]), I()[ref].buckets[slot as int := bucket.Bucket])])
+      ensures forall o: object {:trigger o in old(bucket.Repr)} {:trigger o in old(Repr)} {:trigger o in Repr} | o in Repr :: o in old(Repr) || o in old(bucket.Repr) || fresh(o)
+      decreases ref, node, slot, bucket, childref
+    {
+      node.UpdateSlot(slot, bucket, childref);
+      Repr := {this} + cache.Repr + MutCacheBucketRepr();
+      assert Inv();
+    }
+    method SplitParent(ref: BT.G.Reference, slot: uint64, pivot: Key, left_childref: BT.G.Reference, right_childref: BT.G.Reference)
+      requires Inv()
+      requires ref in I()
+      requires IM.WFNode(I()[ref])
+      requires I()[ref].children.Some?
+      requires 0 <= slot as int < |I()[ref].children.value|
+      requires 0 <= slot as int < |I()[ref].buckets|
+      requires |I()| <= 65536
+      modifies Repr
+      ensures Inv()
+      ensures I() == old(I()[ref := NodeModel.SplitParent(I()[ref], pivot, slot as int, left_childref, right_childref)])
+      ensures forall o: object {:trigger o in old(Repr)} {:trigger o in Repr} | o in Repr :: o in old(Repr) || fresh(o)
+      decreases ref, slot, pivot, left_childref, right_childref
+    {
+      var nodeOpt: Option<Node> := GetOpt(ref);
+      var node: Node := nodeOpt.value;
+      node.SplitParent(slot, pivot, left_childref, right_childref);
+      Repr := {this} + cache.Repr + MutCacheBucketRepr();
+      assert Inv();
+    }
+    method InsertKeyValue(ref: BT.G.Reference, key: Key, msg: Message)
+      requires Inv()
+      requires ref in I()
+      requires IM.WFNode(I()[ref])
+      requires WeightBucketList(I()[ref].buckets) + WeightKey(key) + WeightMessage(msg) < 18446744073709551616
+      modifies Repr
+      ensures Inv()
+      ensures I() == old(NodeModel.CacheInsertKeyValue(I(), ref, key, msg))
+      ensures forall o: object {:trigger o in old(Repr)} {:trigger o in Repr} | o in Repr :: o in old(Repr) || fresh(o)
+      decreases ref, key, msg
+    {
+      NodeModel.reveal_CacheInsertKeyValue();
+      var nodeOpt: Option<Node> := GetOpt(ref);
+      var node: Node := nodeOpt.value;
+      node.InsertKeyValue(key, msg);
+      Repr := {this} + cache.Repr + MutCacheBucketRepr();
+      assert Inv();
+    }
+  }
+}

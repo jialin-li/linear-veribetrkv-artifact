@@ -1,0 +1,1068 @@
+// LinearMutableMap.i.dfy
+module LinearMutableMap {
+    reveals setUpTo, MapFromStorage, UnderlyingContentsMatchesContents, LinearHashMap, FixedSizeLinearHashMap, Iterator, NextExplainedByI, indexOutput, IteratorOutput, LinearHashMap.Inv, Inv0, EachReturnedKeyExplainedByPassedIndex, CantEquivocate, ValidIterIndex, ConstructorFromSize, ConstructorFromStorage, UnderlyingInv, KeyExplainedByPassedIndex, ValidI, Uint64SlotForKey, SimpleIterator
+    reveals setUpTo, MapFromStorage, UnderlyingContentsMatchesContents, LinearHashMap, FixedSizeLinearHashMap, Iterator, NextExplainedByI, indexOutput, IteratorOutput, LinearHashMap.Inv, Inv0, EachReturnedKeyExplainedByPassedIndex, CantEquivocate, ValidIterIndex, ConstructorFromSize, ConstructorFromStorage, UnderlyingInv, KeyExplainedByPassedIndex, ValidI, Uint64SlotForKey, SimpleIterator
+  datatype   FixedSizeLinearHashMap<V> = FixedSizeLinearHashMap(storage: seq<Item<V>>, count: uint64, ghost contents: map<uint64, Option<V>>)
+  datatype   LinearHashMap<V> = LinearHashMap(underlying: FixedSizeLinearHashMap<V>, count: uint64, ghost contents: map<uint64, V>) {
+    predicate Inv()
+      decreases this
+    {
+      Inv0(this)
+    }
+  }
+  datatype   IteratorOutput<V> = Next(key: uint64, value: V) | Done
+  datatype   Iterator<V> = Iterator(i: uint64, ghost s: set<uint64>, ghost decreaser: ORDINAL, next: IteratorOutput<V>)
+  datatype   SimpleIterator = SimpleIterator(i: uint64, ghost s: set<uint64>, ghost decreaser: ORDINAL)
+  predicate FixedSizeInv<V>(self: FixedSizeLinearHashMap<V>)
+    decreases self
+  {
+    128 <= |self.storage| < 18446744073709551616 &&
+    self.count as nat < 18446744073709551616 &&
+    self.count as nat < |self.storage| &&
+    |self.contents| == self.count as nat &&
+    SeqMatchesContentKeys(self.storage, self.contents) &&
+    EntriesMatchContentValue(self.storage, self.contents) &&
+    TombstonesMatchContentValue(self.storage, self.contents)
+  }
+  function method Uint64SlotForKey<V>(self: FixedSizeLinearHashMap<V>, key: uint64): (result: uint64)
+    requires 0 < |self.storage| < 18446744073709551616
+    ensures ValidSlot(|self.storage|, Slot(result as nat))
+    ensures Slot(result as nat) == SlotForKey(|self.storage|, key)
+    decreases self, key
+  {
+    var h: uint64 := hash64(key);
+    var storageLength: uint64 := seq_length(self.storage);
+    h % storageLength as uint64
+  }
+  function method ConstructorFromSize<V>(size: uint64): (self: FixedSizeLinearHashMap<V>)
+    requires 128 <= size
+    ensures FixedSizeInv(self)
+    ensures forall slot: Slot {:trigger SlotIsEmpty(self.storage, slot)} {:trigger ValidSlot(|self.storage|, slot)} :: ValidSlot(|self.storage|, slot) ==> SlotIsEmpty(self.storage, slot)
+    ensures self.contents == map[]
+    ensures size as nat == |self.storage|
+    decreases size
+  {
+    var storage: seq<Item<V>> := seq_alloc_init(size, Empty);
+    FixedSizeLinearHashMap(storage, 0, map[])
+  }
+  function method ConstructorFromStorage<V>(storage: seq<Item<V>>, count: uint64): (self: FixedSizeLinearHashMap<V>)
+    requires 128 <= |storage|
+    ensures self.storage == storage
+    ensures forall slot: Slot {:trigger slot.slot} {:trigger ValidSlot(|self.storage|, slot)} :: ValidSlot(|self.storage|, slot) ==> self.storage[slot.slot] == storage[slot.slot]
+    ensures self.count == count
+    ensures self.contents == map[]
+    decreases storage, count
+  {
+    FixedSizeLinearHashMap(storage, count, map[])
+  }
+  lemma allNonEmptyImpliesCountEqStorageSize<V>(self: FixedSizeLinearHashMap<V>)
+    requires FixedSizeInv(self)
+    ensures (forall j: int {:trigger self.storage[j]} | 0 <= j < |self.storage| :: !self.storage[j].Empty?) ==> self.count as int == |self.storage|
+    decreases self
+  {
+    ghost var elements: seq<Item<V>> := self.storage;
+    if forall j: int {:trigger elements[j]} | 0 <= j < |elements| :: !elements[j].Empty? {
+      ghost var elementIndices: set<int> := set i: int | 0 <= i < |elements|;
+      assert IndexSetThrough(elements, |elements|) == elementIndices;
+      CardinalityOfSetsOfSequenceIndices(elements, elementIndices);
+      IndexSetMatchesContents(elements, self.contents);
+    }
+  }
+  function {:opaque} {:fuel 0, 0} getEmptyWitness<V>(self: FixedSizeLinearHashMap<V>, i: uint64): (res: uint64)
+    requires FixedSizeInv(self)
+    requires 0 <= i as int <= |self.storage|
+    requires forall j: uint64 {:trigger self.storage[j]} | 0 <= j < i :: !self.storage[j].Empty?
+    requires self.count as int < |self.storage|
+    ensures 0 <= res as int < |self.storage|
+    ensures self.storage[res].Empty?
+    decreases |self.storage| - i as int
+  {
+    allNonEmptyImpliesCountEqStorageSize(self);
+    if self.storage[i].Empty? then
+      i
+    else
+      getEmptyWitness(self, i + 1)
+  }
+  method {:timeLimitMultiplier 3}  Probe<V>(self: FixedSizeLinearHashMap<V>, key: uint64)
+      returns (slotIdx: uint64, ghost startSlotIdx: uint64, ghost skips: uint64)
+    requires FixedSizeInv(self)
+    requires self.count as int < |self.storage|
+    ensures 0 <= slotIdx as int < |self.storage|
+    ensures ValidSlot(|self.storage|, Slot(slotIdx as nat))
+    ensures ValidSlot(|self.storage|, Slot(startSlotIdx as nat))
+    ensures Slot(startSlotIdx as nat) == SlotForKey(|self.storage|, key)
+    ensures 0 <= skips
+    ensures slotIdx as nat == KthSlotSuccessor(|self.storage|, Slot(startSlotIdx as nat), skips as nat).slot
+    ensures key in self.contents ==> SlotExplainsKey(self.storage, skips as nat, key)
+    ensures key !in self.contents ==> FilledWithOtherKeys(self.storage, Slot(startSlotIdx as nat), skips as nat, key) && (self.storage[slotIdx].Empty? || (self.storage[slotIdx].Tombstone? && self.storage[slotIdx].key == key))
+    ensures self.storage[slotIdx].Entry? ==> key in self.contents && key == self.storage[slotIdx].key
+    ensures self.storage[slotIdx].Empty? ==> key !in self.contents
+    decreases self, key
+  {
+    slotIdx := Uint64SlotForKey(self, key);
+    startSlotIdx := slotIdx;
+    ghost var startSlot: Slot := Slot(startSlotIdx as nat);
+    ghost var viewFromStartSlot: seq<Item<V>> := View(self.storage, startSlotIdx as nat);
+    ViewsHaveConsistentCounts(self.storage, viewFromStartSlot, startSlotIdx as nat);
+    CountFilledMatchesIndexSet(self.storage);
+    IndexSetMatchesContents(self.storage, self.contents);
+    forall dist: nat {:trigger viewFromStartSlot[dist]} {:trigger KthSlotSuccessor(|self.storage|, startSlot, dist)} | dist < |self.storage|
+      ensures self.storage[KthSlotSuccessor(|self.storage|, startSlot, dist).slot] == viewFromStartSlot[dist]
+    {
+      KthSlotSuccessorWrapsAround(|self.storage|, startSlot, dist);
+    }
+    skips := 0;
+    while true
+      invariant skips < |self.storage| as uint64
+      invariant slotIdx < |self.storage| as uint64
+      invariant |self.storage| == |viewFromStartSlot|
+      invariant self.storage[startSlotIdx..] + self.storage[..startSlotIdx] == viewFromStartSlot
+      invariant slotIdx as nat == KthSlotSuccessor(|self.storage|, startSlot, skips as nat).slot
+      invariant skips < |self.storage| as uint64 ==> self.storage[slotIdx] == viewFromStartSlot[skips]
+      invariant ValidSlot(|self.storage|, KthSlotSuccessor(|self.storage|, startSlot, skips as nat))
+      invariant FilledWithOtherKeys(self.storage, startSlot, skips as nat, key)
+      invariant CountFilled(viewFromStartSlot[..skips]) == skips as nat
+      decreases var wit: uint64 := getEmptyWitness(self, 0); if slotIdx > wit then wit as int - slotIdx as int + |self.storage| else wit as int - slotIdx as int
+    {
+      ghost var skipsBefore: uint64 := skips;
+      if seq_get(self.storage, slotIdx).Empty? || (seq_get(self.storage, slotIdx).Tombstone? && seq_get(self.storage, slotIdx).key == key) {
+        assert key in self.contents ==> SlotExplainsKey(self.storage, skips as nat, key) by {
+          reveal_SomeSkipCountExplainsKey();
+        }
+        return;
+      } else if seq_get(self.storage, slotIdx).key == key {
+        assert EntryInSlotMatchesContents(self.storage, Slot(slotIdx as nat), self.contents);
+        return;
+      }
+      slotIdx := Uint64SlotSuccessorUint64(seq_length(self.storage), slotIdx);
+      skips := skips + 1;
+      assert viewFromStartSlot[..skips] == viewFromStartSlot[..skipsBefore] + [viewFromStartSlot[skipsBefore]];
+      CountFilledAdditive(viewFromStartSlot[..skipsBefore], [viewFromStartSlot[skipsBefore]]);
+      if skips == |self.storage| as uint64 {
+        forall  | true
+          ensures false
+        {
+          calc == {
+            |self.storage|;
+          ==
+            skips as nat;
+          ==
+            CountFilled(viewFromStartSlot[..skips]);
+          ==
+            {
+              assert viewFromStartSlot[..skips] == viewFromStartSlot;
+            }
+            CountFilled(viewFromStartSlot);
+          ==
+            |self.contents|;
+          ==
+            self.count as nat;
+          <
+            |self.storage|;
+          }
+        }
+      }
+    }
+  }
+  method FixedSizeInsert<V>(inout old_self: FixedSizeLinearHashMap<V>, key: uint64, value: V)
+      returns (replaced: Option<V>, self: FixedSizeLinearHashMap<V>)
+    requires FixedSizeInv(old_self)
+    requires old_self.count as nat < |old_self.storage| - 1
+    ensures FixedSizeInv(self) && self.contents == old_self.contents[key := Some(value)] && (key in old_self.contents ==> replaced == old_self.contents[key]) && (replaced.Some? ==> key in old_self.contents) && (key !in old_self.contents ==> replaced.None?) && |self.storage| == |old_self.storage|
+    decreases old_self, key
+  {
+    self := old_self;
+    var slotIdx: uint64;
+    ghost var probeStartSlotIdx: uint64, probeSkips: uint64;
+    slotIdx, probeStartSlotIdx, probeSkips := Probe(self, key);
+    ghost var _inout_tmp_1: map<uint64, Option<V>> := self.contents[key := Some(value)];
+    self := self.(contents := _inout_tmp_1);
+    var replacedItem: Item<V> := seq_get(self.storage, slotIdx);
+    var _inout_tmp_2: seq<Item<V>>;
+    _inout_tmp_2 := mut_seq_set(inout self.storage, slotIdx, Entry(key, value));
+    self := self.(storage := _inout_tmp_2);
+    if replacedItem.Empty? {
+      var _inout_tmp_0: uint64 := self.count + 1;
+      self := self.(count := _inout_tmp_0);
+    }
+    if replacedItem.Entry? {
+      replaced := Some(replacedItem.value);
+    } else {
+      replaced := None;
+    }
+    forall explainedKey: uint64 {:trigger explainedKey in self.contents} | explainedKey in self.contents
+      ensures exists skips: nat {:trigger SlotExplainsKey(self.storage, skips, explainedKey)} :: SlotExplainsKey(self.storage, skips, explainedKey)
+    {
+      if key == explainedKey {
+        assert SlotExplainsKey(self.storage, probeSkips as nat, key);
+      } else {
+        reveal_SomeSkipCountExplainsKey();
+        ghost var oldSkips: nat :| SlotExplainsKey(old_self.storage, oldSkips, explainedKey);
+        assert SlotExplainsKey(self.storage, oldSkips, explainedKey);
+      }
+    }
+    forall slot: Slot {:trigger slot.slot} {:trigger ValidSlot(|self.storage|, slot)} | ValidSlot(|self.storage|, slot) && self.storage[slot.slot].Entry?
+      ensures true && var item: Item<V> := self.storage[slot.slot]; true && self.contents[item.key] == Some(item.value)
+    {
+      ghost var item: Item<V> := self.storage[slot.slot];
+      if slot != Slot(slotIdx as nat) {
+        if item.key == key {
+          assert TwoNonEmptyValidSlotsWithSameKey(self.storage, slot, Slot(slotIdx as nat));
+          assert SameSlot(|self.storage|, slot, Slot(slotIdx as nat));
+          assert false;
+        }
+      }
+    }
+    forall slot: Slot {:trigger slot.slot} {:trigger ValidSlot(|self.storage|, slot)} | ValidSlot(|self.storage|, slot) && self.storage[slot.slot].Tombstone?
+      ensures true && var item: Item<V> := self.storage[slot.slot]; true && self.contents[item.key].None?
+    {
+      ghost var item: Item<V> := self.storage[slot.slot];
+      if slot != Slot(slotIdx as nat) {
+        if item.key == key {
+          assert TwoNonEmptyValidSlotsWithSameKey(self.storage, slot, Slot(slotIdx as nat));
+          assert SameSlot(|self.storage|, slot, Slot(slotIdx as nat));
+          assert false;
+        }
+      }
+    }
+    assert SeqMatchesContentKeys(self.storage, self.contents) by {
+      reveal_SomeSkipCountExplainsKey();
+    }
+  }
+  method FixedSizeUpdateBySlot<V>(inout old_self: FixedSizeLinearHashMap<V>, slotIdx: uint64, value: V)
+      returns (self: FixedSizeLinearHashMap<V>)
+    requires FixedSizeInv(old_self)
+    requires 0 <= slotIdx as int < |old_self.storage|
+    requires old_self.storage[slotIdx].Entry?
+    ensures FixedSizeInv(self)
+    ensures |self.storage| == |old_self.storage|
+    ensures self.storage == old_self.storage[slotIdx as nat := Entry(old_self.storage[slotIdx].key, value)]
+    ensures self.contents == old_self.contents[old_self.storage[slotIdx].key := Some(value)]
+    decreases old_self, slotIdx
+  {
+    self := old_self;
+    var entry: Item<V> := seq_get(self.storage, slotIdx);
+    var _inout_tmp_0: seq<Item<V>>;
+    _inout_tmp_0 := mut_seq_set(inout self.storage, slotIdx, entry.(value := value));
+    self := self.(storage := _inout_tmp_0);
+    ghost var _inout_tmp_1: map<uint64, Option<V>> := self.contents[self.storage[slotIdx].key := Some(value)];
+    self := self.(contents := _inout_tmp_1);
+    ghost var old_self: FixedSizeLinearHashMap<V> := old_self;
+    ghost var key: uint64 := old_self.storage[slotIdx].key;
+    assert EntryInSlotMatchesContents(old_self.storage, Slot(slotIdx as int), old_self.contents);
+    assert key in old_self.contents;
+    calc == {
+      |old_self.contents|;
+    ==
+      |old_self.contents.Keys|;
+    ==
+      |self.contents.Keys|;
+    ==
+      |self.contents.Keys|;
+    }
+    forall explainedKey: uint64 {:trigger explainedKey in self.contents} | explainedKey in self.contents
+      ensures exists skips: nat {:trigger SlotExplainsKey(self.storage, skips, explainedKey)} :: SlotExplainsKey(self.storage, skips, explainedKey)
+    {
+      reveal_SomeSkipCountExplainsKey();
+      ghost var oldSkips: nat :| SlotExplainsKey(old_self.storage, oldSkips, explainedKey);
+      assert SlotExplainsKey(self.storage, oldSkips, explainedKey);
+    }
+    forall slot: Slot {:trigger EntryInSlotMatchesContents(self.storage, slot, self.contents)} {:trigger SlotIsEntry(self.storage, slot)} {:trigger ValidSlot(|self.storage|, slot)} | ValidSlot(|self.storage|, slot) && SlotIsEntry(self.storage, slot)
+      ensures EntryInSlotMatchesContents(self.storage, slot, self.contents)
+    {
+      assert EntryInSlotMatchesContents(old_self.storage, slot, old_self.contents);
+      if slot.slot == slotIdx as int {
+        assert self.contents[self.storage[slot.slot].key] == Some(self.storage[slot.slot].value);
+      } else {
+        calc == {
+          self.contents[self.storage[slot.slot].key];
+        ==
+          {
+            assert old_self.storage[slot.slot].key == self.storage[slot.slot].key;
+            if old_self.storage[slot.slot].key == key {
+              assert TwoNonEmptyValidSlotsWithSameKey(old_self.storage, slot, Slot(slotIdx as int));
+            }
+          }
+          old_self.contents[old_self.storage[slot.slot].key];
+        ==
+          Some(old_self.storage[slot.slot].value);
+        ==
+          Some(self.storage[slot.slot].value);
+        }
+      }
+    }
+    reveal_SomeSkipCountExplainsKey();
+  }
+  method FixedSizeGet<V>(self: FixedSizeLinearHashMap<V>, key: uint64) returns (found: Option<V>)
+    requires FixedSizeInv(self)
+    ensures if key in self.contents && self.contents[key].Some? then found == Some(self.contents[key].value) else found.None?
+    decreases self, key
+  {
+    var slotIdx: uint64, _: uint64, _: uint64 := Probe(self, key);
+    if seq_get(self.storage, slotIdx).Entry? {
+      found := Some(seq_get(self.storage, slotIdx).value);
+    } else {
+      found := None;
+    }
+  }
+  method FixedSizeRemove<V>(inout old_self: FixedSizeLinearHashMap<V>, key: uint64)
+      returns (removed: Option<V>, self: FixedSizeLinearHashMap<V>)
+    requires FixedSizeInv(old_self)
+    ensures FixedSizeInv(self)
+    ensures self.contents == if key in old_self.contents then old_self.contents[key := None] else old_self.contents
+    ensures removed == if key in old_self.contents && old_self.contents[key].Some? then Some(old_self.contents[key].value) else None
+    ensures removed.Some? <==> key in old_self.contents && old_self.contents[key].Some?
+    ensures self.count == old_self.count
+    decreases old_self, key
+  {
+    self := old_self;
+    ghost var probeStartSlotIdx: uint64, probeSkips: uint64;
+    var slotIdx: uint64;
+    slotIdx, probeStartSlotIdx, probeSkips := Probe(self, key);
+    if seq_get(self.storage, slotIdx).Entry? {
+      removed := Some(seq_get(self.storage, slotIdx).value);
+      var _inout_tmp_0: seq<Item<V>>;
+      _inout_tmp_0 := mut_seq_set(inout self.storage, slotIdx, Tombstone(key));
+      self := self.(storage := _inout_tmp_0);
+      ghost var _inout_tmp_1: map<uint64, Option<V>> := self.contents[key := None];
+      self := self.(contents := _inout_tmp_1);
+    } else {
+      removed := None;
+    }
+    ghost var old_self: FixedSizeLinearHashMap<V> := old_self;
+    if old_self.storage[slotIdx].Entry? {
+      forall explainedKey: uint64 {:trigger explainedKey in self.contents} | explainedKey in self.contents
+        ensures exists skips: nat {:trigger SlotExplainsKey(self.storage, skips, explainedKey)} :: SlotExplainsKey(self.storage, skips, explainedKey)
+      {
+        if key == explainedKey {
+          assert SlotExplainsKey(self.storage, probeSkips as nat, key);
+        } else {
+          reveal_SomeSkipCountExplainsKey();
+          ghost var oldSkips: nat :| SlotExplainsKey(old_self.storage, oldSkips, explainedKey);
+          assert SlotExplainsKey(self.storage, oldSkips, explainedKey);
+        }
+      }
+      forall slot: Slot {:trigger slot.slot} {:trigger ValidSlot(|self.storage|, slot)} | ValidSlot(|self.storage|, slot) && self.storage[slot.slot].Entry?
+        ensures true && var item: Item<V> := self.storage[slot.slot]; true && self.contents[item.key] == Some(item.value)
+      {
+        ghost var item: Item<V> := self.storage[slot.slot];
+        if slot != Slot(slotIdx as nat) {
+          if item.key == key {
+            assert CantEquivocateStorageKey(self.storage);
+            assert TwoNonEmptyValidSlotsWithSameKey(self.storage, slot, Slot(slotIdx as nat));
+            assert false;
+          }
+        }
+      }
+      assert SeqMatchesContentKeys(self.storage, self.contents) by {
+        reveal_SomeSkipCountExplainsKey();
+      }
+    } else {
+    }
+  }
+  function MapFromStorage<V>(elements: seq<Item<V>>): (result: map<uint64, V>)
+    decreases elements
+  {
+    if |elements| == 0 then
+      map[]
+    else
+      ghost var item: Item<V> := Last(elements); ghost var dropLastMap: map<uint64, V> := MapFromStorage(DropLast(elements)); if item.Entry? then dropLastMap[item.key := item.value] else dropLastMap
+  }
+  predicate CantEquivocate<V>(elements: seq<Item<V>>)
+    decreases elements
+  {
+    forall slot1: Slot, slot2: Slot {:trigger slot2.slot, slot1.slot} {:trigger slot2.slot, ValidSlot(|elements|, slot1)} {:trigger slot1.slot, ValidSlot(|elements|, slot2)} {:trigger ValidSlot(|elements|, slot2), ValidSlot(|elements|, slot1)} :: 
+      ValidSlot(|elements|, slot1) &&
+      ValidSlot(|elements|, slot2) &&
+      elements[slot1.slot].Entry? &&
+      elements[slot2.slot].Entry? &&
+      elements[slot1.slot].key == elements[slot2.slot].key ==>
+        slot1 == slot2
+  }
+  lemma CantEquivocateMapFromStorageKey<V>(underlying: FixedSizeLinearHashMap<V>)
+    requires FixedSizeInv(underlying)
+    ensures CantEquivocate(underlying.storage)
+    decreases underlying
+  {
+    assert |underlying.storage| > 0;
+    assert ValidSlot(|underlying.storage|, Slot(0));
+    assert exists slot: Slot {:trigger ValidSlot(|underlying.storage|, slot)} :: ValidSlot(|underlying.storage|, slot);
+    forall slot1: Slot, slot2: Slot {:trigger slot2.slot, slot1.slot} {:trigger slot2.slot, ValidSlot(|underlying.storage|, slot1)} {:trigger slot1.slot, ValidSlot(|underlying.storage|, slot2)} {:trigger ValidSlot(|underlying.storage|, slot2), ValidSlot(|underlying.storage|, slot1)} | ValidSlot(|underlying.storage|, slot1) && ValidSlot(|underlying.storage|, slot2) && underlying.storage[slot1.slot].Entry? && underlying.storage[slot2.slot].Entry? && underlying.storage[slot1.slot].key == underlying.storage[slot2.slot].key
+      ensures slot1 == slot2
+    {
+      assert CantEquivocateStorageKey(underlying.storage);
+      if underlying.storage[slot1.slot].Entry? && underlying.storage[slot2.slot].Entry? && underlying.storage[slot1.slot].key == underlying.storage[slot2.slot].key {
+        assert TwoNonEmptyValidSlotsWithSameKey(underlying.storage, slot1, slot2);
+        if slot1 != slot2 {
+          assert false;
+        }
+        assert slot1 == slot2;
+      } else {
+        assert slot1 == slot2;
+      }
+    }
+  }
+  lemma {:induction true}  MapFromStorageProperties<V>(elements: seq<Item<V>>, result: map<uint64, V>)
+    requires CantEquivocate(elements)
+    requires MapFromStorage(elements) == result
+    ensures forall slot: Slot {:trigger slot.slot} {:trigger ValidSlot(|elements|, slot)} :: (ValidSlot(|elements|, slot) && elements[slot.slot].Entry? ==> true) && (ValidSlot(|elements|, slot) && elements[slot.slot].Entry? ==> ghost var item: Item<V> := elements[slot.slot]; item.key in result && result[item.key] == item.value)
+    ensures forall key: uint64 {:trigger result[key]} {:trigger key in result} :: key in result ==> exists slot: Slot {:trigger slot.slot} {:trigger ValidSlot(|elements|, slot)} :: ValidSlot(|elements|, slot) && elements[slot.slot] == Entry(key, result[key])
+    ensures forall key: uint64 {:trigger key in result} :: key !in result ==> forall slot: Slot {:trigger slot.slot} {:trigger ValidSlot(|elements|, slot)} :: ValidSlot(|elements|, slot) && elements[slot.slot].Entry? ==> elements[slot.slot].key != key
+    decreases elements, result
+  {
+    if |elements| == 0 {
+    } else if Last(elements).Entry? {
+      ghost var item: Item<V> := Last(elements);
+      assert elements == DropLast(elements) + [Last(elements)];
+      ghost var dropLastMap: map<uint64, V> := MapFromStorage(DropLast(elements));
+      MapFromStorageProperties(DropLast(elements), dropLastMap);
+      forall slot: Slot {:trigger slot.slot} {:trigger ValidSlot(|elements|, slot)} | ValidSlot(|elements|, slot) && elements[slot.slot].Entry?
+        ensures true && ghost var item: Item<V> := elements[slot.slot]; item.key in result && result[item.key] == item.value
+      {
+        ghost var slotItem: Item<V> := elements[slot.slot];
+        if item.key == elements[slot.slot].key {
+          if slot.slot == |elements| - 1 {
+            assert slotItem.key in result && result[slotItem.key] == slotItem.value;
+          } else {
+            ghost var slot: Slot := Slot(|elements| - 1);
+            assert ValidSlot(|elements|, slot);
+            assert false;
+          }
+        } else {
+          assert slotItem.key in result && result[slotItem.key] == slotItem.value;
+        }
+      }
+      forall key: uint64 {:trigger result[key]} {:trigger key in result} | key in result
+        ensures exists slot: Slot {:trigger slot.slot} {:trigger ValidSlot(|elements|, slot)} :: ValidSlot(|elements|, slot) && elements[slot.slot] == Entry(key, result[key])
+      {
+        if key == item.key {
+          ghost var slot: Slot := Slot(|elements| - 1);
+          assert ValidSlot(|elements|, slot);
+          assert elements[slot.slot] == Entry(key, result[key]);
+        } else {
+          assert exists slot: Slot {:trigger slot.slot} {:trigger ValidSlot(|elements|, slot)} :: ValidSlot(|elements|, slot) && elements[slot.slot] == Entry(key, result[key]);
+        }
+      }
+    } else {
+    }
+  }
+  predicate UnderlyingContentsMatchesContents<V>(underlying: FixedSizeLinearHashMap<V>, contents: map<uint64, V>)
+    decreases underlying, contents
+  {
+    (forall key: uint64 {:trigger contents[key]} {:trigger underlying.contents[key]} {:trigger key in underlying.contents} {:trigger key in contents} :: 
+      (key in contents ==>
+        key in underlying.contents) &&
+      (key in contents ==>
+        underlying.contents[key] == Some(contents[key]))) &&
+    forall key: uint64 {:trigger underlying.contents[key]} {:trigger key in underlying.contents} {:trigger key in contents} :: 
+      key !in contents ==>
+        key !in underlying.contents || underlying.contents[key].None?
+  }
+  predicate UnderlyingInv<V>(self: LinearHashMap<V>, underlying: FixedSizeLinearHashMap<V>)
+    decreases self, underlying
+  {
+    |self.contents| == self.count as nat &&
+    UnderlyingContentsMatchesContents(underlying, self.contents) &&
+    FixedSizeInv(underlying) &&
+    MapFromStorage(underlying.storage) == self.contents
+  }
+  lemma UnderlyingInvImpliesMapFromStorageMatchesContents<V>(underlying: FixedSizeLinearHashMap<V>, contents: map<uint64, V>)
+    requires UnderlyingContentsMatchesContents(underlying, contents)
+    requires FixedSizeInv(underlying)
+    ensures MapFromStorage(underlying.storage) == contents
+    decreases underlying, contents
+  {
+    ghost var mapFromStorage: map<uint64, V> := MapFromStorage(underlying.storage);
+    CantEquivocateMapFromStorageKey(underlying);
+    MapFromStorageProperties(underlying.storage, mapFromStorage);
+    assert MapFromStorage(underlying.storage) == contents by {
+      reveal_SomeSkipCountExplainsKey();
+    }
+  }
+  predicate Inv0<V>(self: LinearHashMap<V>)
+    decreases self
+  {
+    Inv(self)
+  }
+  predicate Inv<V>(self: LinearHashMap<V>)
+    ensures Inv(self) ==> |self.contents| == self.count as nat
+    decreases self
+  {
+    UnderlyingInv(self, self.underlying) &&
+    MapFromStorage(self.underlying.storage) == self.contents &&
+    |self.contents| == self.count as nat &&
+    self.count as nat <= 18446744073709551616 / 8
+  }
+  lemma CountBound<V>(self: LinearHashMap<V>)
+    requires Inv(self)
+    ensures self.count as int <= 18446744073709551616 / 8
+    decreases self
+  {
+  }
+  lemma RevealProtectedInv<V>(self: LinearHashMap<V>)
+    requires Inv(self)
+    ensures UnderlyingInv(self, self.underlying) && MapFromStorage(self.underlying.storage) == self.contents && |self.contents| == self.count as nat
+    decreases self
+  {
+  }
+  function method {:opaque} {:fuel 0, 0} Constructor<V>(size: uint64): (self: LinearHashMap<V>)
+    requires 128 <= size
+    ensures Inv(self)
+    ensures self.contents == map[]
+    decreases size
+  {
+    var self: LinearHashMap<V> := LinearHashMap(ConstructorFromSize(size), 0, map[]);
+    assert forall slot: Slot {:trigger slot.slot} {:trigger ValidSlot(|self.underlying.storage|, slot)} :: ValidSlot(|self.underlying.storage|, slot) ==> !self.underlying.storage[slot.slot].Entry?;
+    UnderlyingInvImpliesMapFromStorageMatchesContents(self.underlying, self.contents);
+    assert MapFromStorage(self.underlying.storage) == self.contents;
+    self
+  }
+  method {:opaque} Destructor<V>(self: LinearHashMap<V>)
+    decreases self
+  {
+    var LinearHashMap(underlying: FixedSizeLinearHashMap<V>, _: uint64, _: map<uint64, V>) := self;
+    var FixedSizeLinearHashMap(storage: seq<Item<V>>, _: uint64, _: map<uint64, Option<V>>) := underlying;
+    var _: () := seq_free(storage);
+  }
+  lemma LemmaEntryKeyInContents<V>(self: LinearHashMap<V>, i: uint64)
+    requires Inv(self)
+    requires 0 <= i as int < |self.underlying.storage|
+    requires self.underlying.storage[i].Entry?
+    ensures self.underlying.storage[i].key in self.contents
+    decreases self, i
+  {
+    assert EntryInSlotMatchesContents(self.underlying.storage, Slot(i as nat), self.underlying.contents);
+  }
+  method {:timeLimitMultiplier 3}  Realloc<V>(inout old_self: LinearHashMap<V>) returns (self: LinearHashMap<V>)
+    requires Inv(old_self)
+    requires old_self.count as nat < 18446744073709551616 / 8
+    ensures Inv(self)
+    ensures self.contents == old_self.contents
+    ensures self.underlying.count as nat < |self.underlying.storage| - 2
+    decreases old_self
+  {
+    self := old_self;
+    var i: uint64 := 0;
+    var newSize: uint64 := (128 + self.count) * 4;
+    var newUnderlying: FixedSizeLinearHashMap<V> := ConstructorFromSize(newSize);
+    var transferredContents: map<uint64, V> := map[];
+    while i < seq_length(self.underlying.storage)
+      invariant i <= seq_length(self.underlying.storage)
+      invariant FixedSizeInv(newUnderlying)
+      invariant self.count as int < |newUnderlying.storage| - 1
+      invariant newUnderlying.contents.Keys <= self.contents.Keys
+      invariant transferredContents.Keys <= self.contents.Keys
+      invariant UnderlyingContentsMatchesContents(newUnderlying, transferredContents)
+      invariant MapFromStorage(self.underlying.storage[..i]) == transferredContents
+      invariant FixedSizeInv(newUnderlying)
+      invariant newUnderlying.count as nat <= i as nat
+      invariant |newUnderlying.storage| == newSize as nat
+      invariant |transferredContents| == newUnderlying.count as nat
+      invariant transferredContents.Keys <= self.contents.Keys
+      invariant forall key: uint64 {:trigger key in newUnderlying.contents} :: key in newUnderlying.contents ==> exists slot: Slot {:trigger FilledWithEntryKey(self.underlying.storage, slot, key)} {:trigger ValidSlot(|self.underlying.storage|, slot)} {:trigger slot.slot} :: slot.slot < i as int && ValidSlot(|self.underlying.storage|, slot) && FilledWithEntryKey(self.underlying.storage, slot, key)
+      decreases |self.underlying.storage| - i as int
+    {
+      var item: Item<V> := seq_get(self.underlying.storage, i);
+      assert self.underlying.storage[..i + 1] == self.underlying.storage[..i] + [self.underlying.storage[i]];
+      if item.Entry? {
+        SetInclusionImpliesSmallerCardinality(newUnderlying.contents.Keys, self.contents.Keys);
+        LemmaEntryKeyInContents(self, i);
+        assert item == self.underlying.storage[i];
+        if item.key in newUnderlying.contents {
+          ghost var j: uint64 :| 0 <= j < i && ValidSlot(|self.underlying.storage|, Slot(j as int)) && self.underlying.storage[Slot(j as int).slot].Entry? && self.underlying.storage[Slot(j as int).slot].key == item.key;
+          assert ValidSlot(|self.underlying.storage|, Slot(i as nat));
+          assert i != j;
+          assert Slot(i as nat) != Slot(j as nat);
+          assert self.underlying.storage[Slot(j as nat).slot].key == self.underlying.storage[Slot(i as nat).slot].key;
+          CantEquivocateMapFromStorageKey(self.underlying);
+          assert false;
+        }
+        assert item.key !in newUnderlying.contents;
+        SetInclusionImpliesSmallerCardinality(transferredContents.Keys, self.contents.Keys);
+        var replaced: Option<V>, _inout_tmp_0: FixedSizeLinearHashMap<V> := FixedSizeInsert(inout newUnderlying, item.key, item.value);
+        newUnderlying := _inout_tmp_0;
+        transferredContents := transferredContents[item.key := item.value];
+        forall key: uint64 {:trigger key in newUnderlying.contents} | key in newUnderlying.contents
+          ensures exists slot: Slot {:trigger ValidSlot(|self.underlying.storage|, slot)} {:trigger slot.slot} :: slot.slot < i as nat + 1 && ValidSlot(|self.underlying.storage|, slot) && self.underlying.storage[slot.slot].Entry? && self.underlying.storage[slot.slot].key == key
+        {
+          if key == item.key {
+            assert ValidSlot(|self.underlying.storage|, Slot(i as nat));
+          } else {
+          }
+        }
+      }
+      i := i + 1;
+    }
+    assert FixedSizeInv(newUnderlying);
+    assert self.underlying.storage[..i] == self.underlying.storage;
+    assert MapFromStorage(self.underlying.storage) == transferredContents;
+    UnderlyingInvImpliesMapFromStorageMatchesContents(newUnderlying, transferredContents);
+    assert transferredContents == self.contents;
+    var oldUnderlying: FixedSizeLinearHashMap<V>, _inout_tmp_1: FixedSizeLinearHashMap<V> := Replace(inout self.underlying, newUnderlying);
+    self := self.(underlying := _inout_tmp_1);
+    var FixedSizeLinearHashMap(oldStorage: seq<Item<V>>, _: uint64, _: map<uint64, Option<V>>) := oldUnderlying;
+    var _: () := seq_free(oldStorage);
+    assert self.contents == transferredContents;
+    assert UnderlyingContentsMatchesContents(newUnderlying, self.contents);
+    assert forall key: uint64 {:trigger old_self.contents[key]} {:trigger newUnderlying.contents[key]} {:trigger key in newUnderlying.contents} {:trigger key in old_self.contents} :: (key in old_self.contents ==> key in newUnderlying.contents) && (key in old_self.contents ==> newUnderlying.contents[key] == Some(old_self.contents[key]));
+    assert forall key: uint64 {:trigger newUnderlying.contents[key]} {:trigger key in newUnderlying.contents} {:trigger key in old_self.contents} :: key !in old_self.contents ==> key !in newUnderlying.contents || newUnderlying.contents[key].None?;
+  }
+  method InsertAndGetOld<V>(inout old_self: LinearHashMap<V>, key: uint64, value: V)
+      returns (replaced: Option<V>, self: LinearHashMap<V>)
+    requires Inv(old_self)
+    requires old_self.count as nat < 18446744073709551616 / 8
+    ensures Inv(self)
+    ensures self.contents == old_self.contents[key := value]
+    ensures self.count as nat == old_self.count as nat + if replaced.Some? then 0 else 1
+    ensures replaced.Some? ==> MapsTo(old_self.contents, key, replaced.value)
+    ensures replaced.None? ==> key !in old_self.contents
+    decreases old_self, key
+  {
+    self := old_self;
+    if seq_length(self.underlying.storage) as uint64 / 2 <= self.underlying.count {
+      var _inout_tmp_0: LinearHashMap<V>;
+      _inout_tmp_0 := Realloc(inout self);
+      self := _inout_tmp_0;
+    }
+    var _inout_tmp_2: FixedSizeLinearHashMap<V>;
+    replaced, _inout_tmp_2 := FixedSizeInsert(inout self.underlying, key, value);
+    self := self.(underlying := _inout_tmp_2);
+    ghost var _inout_tmp_3: map<uint64, V> := self.contents[key := value];
+    self := self.(contents := _inout_tmp_3);
+    if replaced.None? {
+      var _inout_tmp_1: uint64 := self.count + 1;
+      self := self.(count := _inout_tmp_1);
+    }
+    UnderlyingInvImpliesMapFromStorageMatchesContents(self.underlying, self.contents);
+  }
+  method Insert<V>(inout old_self: LinearHashMap<V>, key: uint64, value: V)
+      returns (self: LinearHashMap<V>)
+    requires Inv(old_self)
+    requires old_self.count as nat < 18446744073709551616 / 8
+    ensures Inv(self)
+    ensures self.contents == old_self.contents[key := value]
+    ensures self.count as nat == old_self.count as nat || self.count as nat == old_self.count as nat + 1
+    decreases old_self, key
+  {
+    self := old_self;
+    var replaced: Option<V>, _inout_tmp_0: LinearHashMap<V> := InsertAndGetOld(inout self, key, value);
+    self := _inout_tmp_0;
+  }
+  method RemoveAndGet<V>(inout old_self: LinearHashMap<V>, key: uint64)
+      returns (removed: Option<V>, self: LinearHashMap<V>)
+    requires Inv(old_self)
+    ensures Inv(self)
+    ensures self.contents == if key in old_self.contents then map k: uint64 {:trigger old_self.contents[k]} {:trigger k in old_self.contents} | k in old_self.contents && k != key :: old_self.contents[k] else old_self.contents
+    ensures removed == if key in old_self.contents then Some(old_self.contents[key]) else None
+    ensures self.count == if key in old_self.contents then old_self.count - 1 else old_self.count
+    decreases old_self, key
+  {
+    self := old_self;
+    var _inout_tmp_1: FixedSizeLinearHashMap<V>;
+    removed, _inout_tmp_1 := FixedSizeRemove(inout self.underlying, key);
+    self := self.(underlying := _inout_tmp_1);
+    if removed.Some? {
+      var _inout_tmp_0: uint64 := self.count - 1;
+      self := self.(count := _inout_tmp_0);
+    }
+    ghost var _inout_tmp_2: map<uint64, V> := map k: uint64 {:trigger self.contents[k]} {:trigger k in self.contents} | k in self.contents && k != key :: self.contents[k];
+    self := self.(contents := _inout_tmp_2);
+    if removed.Some? {
+      assert |old_self.contents.Keys - {key}| == |old_self.contents.Keys| - |{key}|;
+      assert old_self.contents.Keys - {key} == self.contents.Keys;
+    } else {
+      assert self.contents == old_self.contents;
+    }
+    assert self.count as nat == |self.contents|;
+    assert UnderlyingContentsMatchesContents(self.underlying, self.contents);
+    UnderlyingInvImpliesMapFromStorageMatchesContents(self.underlying, self.contents);
+  }
+  method Remove<V>(inout old_self: LinearHashMap<V>, key: uint64) returns (self: LinearHashMap<V>)
+    requires Inv(old_self)
+    ensures Inv(self) && self.contents == if key in old_self.contents then map k: uint64 {:trigger old_self.contents[k]} {:trigger k in old_self.contents} | k in old_self.contents && k != key :: old_self.contents[k] else old_self.contents
+    decreases old_self, key
+  {
+    self := old_self;
+    var _: Option<V>, _inout_tmp_0: LinearHashMap<V> := RemoveAndGet(inout self, key);
+    self := _inout_tmp_0;
+  }
+  method Get<V>(self: LinearHashMap<V>, key: uint64) returns (found: Option<V>)
+    requires Inv(self)
+    ensures if key in self.contents then found == Some(self.contents[key]) else found.None?
+    ensures found.Some? <==> key in self.contents
+    decreases self, key
+  {
+    found := FixedSizeGet(self.underlying, key);
+  }
+  predicate NextExplainedByI<V>(self: LinearHashMap<V>, i: uint64, output: IteratorOutput<V>)
+    decreases self, i, output
+  {
+    (output.Next? ==>
+      i as int < |self.underlying.storage| &&
+      self.underlying.storage[i].Entry? &&
+      self.underlying.storage[i].key == output.key &&
+      self.underlying.storage[i].value == output.value) &&
+    (output.Done? ==>
+      i as int == |self.underlying.storage|)
+  }
+  predicate ValidIterIndex<V>(self: LinearHashMap<V>, i: nat)
+    decreases self, i
+  {
+    i <= |self.underlying.storage|
+  }
+  predicate ValidI<V>(self: LinearHashMap<V>, it: Iterator<V>)
+    decreases self, it
+  {
+    true &&
+    ValidIterIndex(self, it.i as nat)
+  }
+  predicate KeyExplainedByPassedIndex<V>(self: LinearHashMap<V>, i: nat, key: uint64)
+    requires ValidElements(self.underlying.storage)
+    requires ValidIterIndex(self, i)
+    decreases self, i, key
+  {
+    exists j: int {:trigger Slot(j)} | 0 <= j < i :: 
+      FilledWithEntryKey(self.underlying.storage, Slot(j), key)
+  }
+  predicate EachReturnedKeyExplainedByPassedIndex<V>(self: LinearHashMap<V>, s: set<uint64>, i: nat)
+    requires ValidElements(self.underlying.storage)
+    requires ValidIterIndex(self, i)
+    decreases self, s, i
+  {
+    forall key: uint64 {:trigger KeyExplainedByPassedIndex(self, i, key)} {:trigger key in s} | key in s :: 
+      KeyExplainedByPassedIndex(self, i, key)
+  }
+  predicate WFIter<V>(self: LinearHashMap<V>, it: Iterator<V>)
+    ensures WFIter(self, it) ==> it.next.Done? ==> it.s == self.contents.Keys
+    ensures WFIter(self, it) ==> it.next.Next? ==> MapsTo(self.contents, it.next.key, it.next.value)
+    ensures WFIter(self, it) ==> it.next.Next? ==> it.next.key !in it.s
+    ensures WFIter(self, it) ==> it.s <= self.contents.Keys
+    decreases self, it
+  {
+    ValidI(self, it) &&
+    NextExplainedByI(self, it.i, it.next) &&
+    (it.next.Done? ==>
+      it.s == self.contents.Keys) &&
+    ValidElements(self.underlying.storage) &&
+    (forall j: int {:trigger self.underlying.storage[j]} | 0 <= j < it.i as int :: 
+      self.underlying.storage[j].Entry? ==>
+        self.underlying.storage[j].key in it.s) &&
+    EachReturnedKeyExplainedByPassedIndex(self, it.s, it.i as nat) &&
+    it.decreaser == (|self.underlying.storage| - it.i as int) as ORDINAL &&
+    (it.next.Next? ==>
+      MapsTo(self.contents, it.next.key, it.next.value)) &&
+    (it.next.Next? ==>
+      it.next.key !in it.s) &&
+    it.s <= self.contents.Keys
+  }
+  predicate WFSimpleIter<V>(self: LinearHashMap<V>, it: SimpleIterator)
+    ensures WFSimpleIter(self, it) ==> it.s <= self.contents.Keys
+    decreases self, it
+  {
+    0 <= it.i as int <= |self.underlying.storage| < Uint64UpperBound() &&
+    (it.i as int == |self.underlying.storage| ==>
+      it.s == self.contents.Keys) &&
+    (it.i as int < |self.underlying.storage| ==>
+      self.underlying.storage[it.i].Entry?) &&
+    ValidElements(self.underlying.storage) &&
+    (forall j: int {:trigger self.underlying.storage[j]} | 0 <= j < it.i as int :: 
+      self.underlying.storage[j].Entry? ==>
+        self.underlying.storage[j].key in it.s) &&
+    EachReturnedKeyExplainedByPassedIndex(self, it.s, it.i as nat) &&
+    it.decreaser == (|self.underlying.storage| - it.i as int) as ORDINAL &&
+    (it.i as int < |self.underlying.storage| ==>
+      MapsTo(self.contents, self.underlying.storage[it.i].key, self.underlying.storage[it.i].value) &&
+      self.underlying.storage[it.i].key !in it.s) &&
+    it.s <= self.contents.Keys
+  }
+  function method indexOutput<V>(self: LinearHashMap<V>, i: uint64): (next: IteratorOutput<V>)
+    requires 0 <= i as int <= |self.underlying.storage| < Uint64UpperBound()
+    requires i as int < |self.underlying.storage| ==> self.underlying.storage[i].Entry?
+    decreases self, i
+  {
+    if i == seq_length(self.underlying.storage) then
+      Done
+    else
+      Next(seq_get(self.underlying.storage, i).key, seq_get(self.underlying.storage, i).value)
+  }
+  function method SimpleIterOutput<V>(self: LinearHashMap<V>, it: SimpleIterator): (next: IteratorOutput<V>)
+    requires WFSimpleIter(self, it)
+    ensures next.Done? ==> it.s == self.contents.Keys
+    ensures next.Next? ==> MapsTo(self.contents, next.key, next.value)
+    ensures next.Next? ==> next.key !in it.s
+    decreases self, it
+  {
+    indexOutput(self, it.i)
+  }
+  lemma LemmaWFIterImpliesILt<V>(self: LinearHashMap<V>, it: Iterator<V>)
+    requires WFIter(self, it)
+    ensures it.next.Next? ==> it.i as int < |self.underlying.storage|
+    decreases self, it
+  {
+  }
+  lemma LemmaWFSimpleIterImpliesEntry<V>(self: LinearHashMap<V>, it: SimpleIterator)
+    requires WFSimpleIter(self, it)
+    ensures 0 <= it.i as int <= |self.underlying.storage| && (SimpleIterOutput(self, it).Next? ==> it.i as int < |self.underlying.storage|) && (it.i as int < |self.underlying.storage| ==> true && self.underlying.storage[it.i].Entry?)
+    decreases self, it
+  {
+  }
+  lemma LemmaIterNextNotInS<V>(self: LinearHashMap<V>, it: Iterator<V>)
+    requires 0 <= it.i as int <= |self.underlying.storage|
+    requires ValidElements(self.underlying.storage)
+    requires CantEquivocateStorageKey(self.underlying.storage)
+    requires NextExplainedByI(self, it.i, it.next)
+    requires EachReturnedKeyExplainedByPassedIndex(self, it.s, it.i as nat)
+    ensures it.next.Next? ==> it.next.key !in it.s
+    decreases self, it
+  {
+    if it.next.Next? {
+      if it.next.key in it.s {
+        ghost var j: int :| 0 <= j < it.i as int && self.underlying.storage[j].Entry? && it.next.key == self.underlying.storage[j].key;
+        assert TwoNonEmptyValidSlotsWithSameKey<V>(self.underlying.storage, Slot(it.i as int), Slot(j));
+      }
+    }
+  }
+  method iterToNext<V>(self: LinearHashMap<V>, i: uint64)
+      returns (i': uint64, output: IteratorOutput<V>)
+    requires Inv(self)
+    requires 0 <= i as int <= |self.underlying.storage|
+    ensures NextExplainedByI(self, i', output)
+    ensures forall j: uint64 {:trigger self.underlying.storage[j]} | i <= j < i' :: !self.underlying.storage[j].Entry?
+    ensures i <= i'
+    ensures output.Next? ==> MapsTo(self.contents, output.key, output.value)
+    decreases |self.underlying.storage| - i as int
+  {
+    i' := i;
+    while true
+      invariant 0 <= i' as int <= |self.underlying.storage|
+      invariant forall j: uint64 {:trigger self.underlying.storage[j]} | i <= j < i' :: !self.underlying.storage[j].Entry?
+      invariant i <= i'
+      decreases |self.underlying.storage| - i' as int
+    {
+      if i' == seq_length(self.underlying.storage) {
+        output := Done;
+        return;
+      } else if seq_get(self.underlying.storage, i').Entry? {
+        output := Next(seq_get(self.underlying.storage, i').key, seq_get(self.underlying.storage, i').value);
+        UnderlyingInvImpliesMapFromStorageMatchesContents(self.underlying, self.contents);
+        CantEquivocateMapFromStorageKey(self.underlying);
+        MapFromStorageProperties(self.underlying.storage, self.contents);
+        assert Slot(i' as int).slot == i' as nat;
+        return;
+      }
+      i' := i' + 1;
+    }
+  }
+  method simpleIterToNext<V>(self: LinearHashMap<V>, i: uint64) returns (i': uint64)
+    requires Inv(self)
+    requires 0 <= i as int <= |self.underlying.storage|
+    ensures 0 <= i' as int <= |self.underlying.storage|
+    ensures forall j: uint64 {:trigger self.underlying.storage[j]} | i <= j < i' :: !self.underlying.storage[j].Entry?
+    ensures i' as int < |self.underlying.storage| ==> self.underlying.storage[i'].Entry?
+    ensures i' as int < |self.underlying.storage| ==> var output: Item<V> := self.underlying.storage[i']; MapsTo(self.contents, output.key, output.value)
+    ensures i <= i'
+    decreases self, i
+  {
+    i' := i;
+    while true
+      invariant 0 <= i' as int <= |self.underlying.storage|
+      invariant forall j: uint64 {:trigger self.underlying.storage[j]} | i <= j < i' :: !self.underlying.storage[j].Entry?
+      decreases |self.underlying.storage| - i' as int
+    {
+      if i' == seq_length(self.underlying.storage) {
+        return;
+      } else if seq_get(self.underlying.storage, i').Entry? {
+        ghost var output: Item<V> := self.underlying.storage[i'];
+        UnderlyingInvImpliesMapFromStorageMatchesContents(self.underlying, self.contents);
+        CantEquivocateMapFromStorageKey(self.underlying);
+        MapFromStorageProperties(self.underlying.storage, self.contents);
+        assert Slot(i' as int).slot == i' as nat;
+        return;
+      }
+      i' := i' + 1;
+    }
+  }
+  method IterStart<V>(self: LinearHashMap<V>) returns (it': Iterator<V>)
+    requires Inv(self)
+    ensures WFIter(self, it')
+    ensures it'.s == {}
+    decreases self
+  {
+    var i: uint64, next: IteratorOutput<V> := iterToNext(self, 0);
+    it' := Iterator(i, {}, (|self.underlying.storage| - i as int) as ORDINAL, next);
+    LemmaIterNextNotInS(self, it');
+    reveal_SomeSkipCountExplainsKey();
+  }
+  method SimpleIterStart<V>(self: LinearHashMap<V>) returns (it': SimpleIterator)
+    requires Inv(self)
+    ensures WFSimpleIter(self, it')
+    ensures it'.s == {}
+    decreases self
+  {
+    var i: uint64 := simpleIterToNext(self, 0);
+    it' := SimpleIterator(i, {}, (|self.underlying.storage| - i as int) as ORDINAL);
+    LemmaIterNextNotInS(self, Iterator(it'.i, it'.s, it'.decreaser, indexOutput(self, it'.i)));
+    reveal_SomeSkipCountExplainsKey();
+  }
+  method IterInc<V>(self: LinearHashMap<V>, it: Iterator<V>) returns (it': Iterator<V>)
+    requires Inv(self)
+    requires WFIter(self, it)
+    requires it.next.Next?
+    ensures WFIter(self, it')
+    ensures it'.s == it.s + {it.next.key}
+    ensures it'.next.Done? ==> it'.s == self.contents.Keys
+    ensures it'.decreaser < it.decreaser
+    decreases self, it
+  {
+    var i: uint64, next: IteratorOutput<V> := iterToNext(self, it.i + 1);
+    it' := Iterator(i, it.s + {it.next.key}, (|self.underlying.storage| - i as int) as ORDINAL, next);
+    assert FilledWithEntryKey(self.underlying.storage, Slot(it.i as nat), it.next.key);
+    LemmaIterNextNotInS(self, it');
+    assert it'.next.Done? ==> it'.s == self.contents.Keys by {
+      reveal_SomeSkipCountExplainsKey();
+    }
+  }
+  method SimpleIterInc<V>(self: LinearHashMap<V>, it: SimpleIterator) returns (it': SimpleIterator)
+    requires Inv(self)
+    requires WFSimpleIter(self, it)
+    requires SimpleIterOutput(self, it).Next?
+    ensures WFSimpleIter(self, it')
+    ensures it'.s == it.s + {SimpleIterOutput(self, it).key}
+    ensures it'.decreaser < it.decreaser
+    decreases self, it
+  {
+    var i: uint64 := simpleIterToNext(self, it.i + 1);
+    it' := SimpleIterator(i, it.s + {SimpleIterOutput(self, it).key}, (|self.underlying.storage| - i as int) as ORDINAL);
+    assert FilledWithEntryKey(self.underlying.storage, Slot(it.i as nat), SimpleIterOutput(self, it).key);
+    LemmaIterNextNotInS(self, Iterator(it'.i, it'.s, it'.decreaser, indexOutput(self, it'.i)));
+    assert it'.i as int == |self.underlying.storage| ==> it'.s == self.contents.Keys by {
+      reveal_SomeSkipCountExplainsKey();
+    }
+  }
+  lemma LemmaIterIndexLtCount<V>(self: LinearHashMap<V>, it: Iterator<V>)
+    requires Inv(self)
+    requires WFIter(self, it)
+    ensures it.next.Next? ==> |it.s| < self.count as int
+    decreases self, it
+  {
+    if it.next.Next? {
+      ProperSubsetImpliesSmallerCardinality(it.s, self.contents.Keys);
+    }
+  }
+  method MaxKey<V>(self: LinearHashMap<V>) returns (maxK: uint64)
+    requires Inv(self)
+    ensures forall key: uint64 {:trigger key in self.contents} | key in self.contents :: key <= maxK
+    decreases self
+  {
+    var it: Iterator<V> := IterStart(self);
+    while it.next.Next?
+      invariant WFIter(self, it)
+      invariant forall key: uint64 {:trigger key in it.s} | key in it.s :: key <= maxK
+      decreases it.decreaser
+    {
+      var key: uint64 := it.next.key;
+      maxK := if maxK < key then key else maxK;
+      it := IterInc(self, it);
+    }
+  }
+  method UpdateByIter<V>(inout old_self: LinearHashMap<V>, it: SimpleIterator, value: V)
+      returns (self: LinearHashMap<V>)
+    requires Inv(old_self)
+    requires WFSimpleIter(old_self, it)
+    requires SimpleIterOutput(old_self, it).Next?
+    ensures Inv(self)
+    ensures self.contents == old_self.contents[SimpleIterOutput(old_self, it).key := value]
+    ensures self.count == old_self.count
+    ensures WFSimpleIter(self, it)
+    ensures forall preserved: SimpleIterator {:trigger SimpleIterOutput(old_self, preserved)} {:trigger SimpleIterOutput(self, preserved)} {:trigger preserved.i} {:trigger WFSimpleIter(self, preserved)} {:trigger WFSimpleIter(old_self, preserved)} :: (WFSimpleIter(old_self, preserved) ==> WFSimpleIter(self, preserved)) && (WFSimpleIter(old_self, preserved) ==> it.i == preserved.i ==> SimpleIterOutput(self, preserved).key == SimpleIterOutput(old_self, preserved).key)
+    decreases old_self, it
+  {
+    self := old_self;
+    ghost var key: uint64 := SimpleIterOutput(self, it).key;
+    var _inout_tmp_0: FixedSizeLinearHashMap<V>;
+    _inout_tmp_0 := FixedSizeUpdateBySlot(inout self.underlying, it.i, value);
+    self := self.(underlying := _inout_tmp_0);
+    ghost var _inout_tmp_1: map<uint64, V> := self.contents[key := value];
+    self := self.(contents := _inout_tmp_1);
+    UnderlyingInvImpliesMapFromStorageMatchesContents(self.underlying, self.contents);
+    forall preserved: SimpleIterator {:trigger WFSimpleIter(self, preserved)} {:trigger WFSimpleIter(old_self, preserved)} | WFSimpleIter(old_self, preserved)
+      ensures WFSimpleIter(self, preserved)
+    {
+      forall key: uint64 {:trigger key in preserved.s} | key in preserved.s
+        ensures exists j: int {:trigger self.underlying.storage[j]} | 0 <= j < preserved.i as int :: self.underlying.storage[j].Entry? && key == self.underlying.storage[j].key
+      {
+        assert key in old_self.contents;
+        ghost var j: int :| 0 <= j < preserved.i as int && old_self.underlying.storage[j].Entry? && key == old_self.underlying.storage[j].key;
+        assert self.underlying.storage[j].Entry?;
+        assert key == self.underlying.storage[j].key;
+      }
+    }
+  }
+  function setUpTo<V>(self: LinearHashMap<V>, i: int): set<uint64>
+    requires 0 <= i <= |self.underlying.storage|
+    decreases self, i
+  {
+    set j: int {:trigger self.underlying.storage[j]} | 0 <= j < i && self.underlying.storage[j].Entry? :: self.underlying.storage[j].key
+  }
+  lemma setUpToEachKeyExplainedByPassedIndex<V>(self: LinearHashMap<V>, i: nat)
+    requires ValidElements(self.underlying.storage)
+    requires ValidIterIndex(self, i)
+    ensures EachReturnedKeyExplainedByPassedIndex(self, setUpTo(self, i), i)
+    decreases self, i
+  {
+    forall key: uint64 {:trigger KeyExplainedByPassedIndex(self, i, key)} {:trigger key in setUpTo(self, i)} | key in setUpTo(self, i)
+      ensures KeyExplainedByPassedIndex(self, i, key)
+    {
+      ghost var j: int :| 0 <= j < i && self.underlying.storage[j].Entry? && key == self.underlying.storage[j].key;
+      assert FilledWithEntryKey(self.underlying.storage, Slot(j), key);
+    }
+  }
+  lemma setUpToLeContents<V>(self: LinearHashMap<V>, i: int)
+    requires Inv(self)
+    requires 0 <= i <= |self.underlying.storage|
+    ensures setUpTo(self, i) <= self.contents.Keys
+    decreases self, i
+  {
+    forall j: int {:trigger self.underlying.storage[j]} | 0 <= j < i && self.underlying.storage[j].Entry?
+      ensures self.underlying.storage[j].key in self.contents
+    {
+      ghost var key: uint64 := self.underlying.storage[j].key;
+      ghost var slot: Slot := Slot(j);
+      assert ValidSlot(|self.underlying.storage|, slot);
+      CantEquivocateMapFromStorageKey(self.underlying);
+      MapFromStorageProperties(self.underlying.storage, self.contents);
+    }
+  }
+  method FindSimpleIter<V>(self: LinearHashMap<V>, key: uint64) returns (it: SimpleIterator)
+    requires Inv(self)
+    ensures WFSimpleIter(self, it)
+    ensures key in self.contents ==> SimpleIterOutput(self, it) == Next(key, self.contents[key])
+    ensures key !in self.contents ==> SimpleIterOutput(self, it) == Done
+    decreases self, key
+  {
+    var idx: uint64, _: uint64, _: uint64 := Probe(self.underlying, key);
+    var i: uint64 := if seq_get(self.underlying.storage, idx).Entry? then idx else seq_length(self.underlying.storage) as uint64;
+    it := SimpleIterator(i, setUpTo(self, i as int), (|self.underlying.storage| - i as int) as ORDINAL);
+    assert WFSimpleIter(self, it) && (key in self.contents ==> SimpleIterOutput(self, it) == Next(key, self.contents[key])) && (key !in self.contents ==> SimpleIterOutput(self, it) == Done) by {
+      if it.i as int < |self.underlying.storage| {
+        if self.underlying.storage[it.i].key in it.s {
+          ghost var j: uint64 :| 0 <= j < it.i && self.underlying.storage[j].Entry? && self.underlying.storage[j].key == key;
+          assert TwoNonEmptyValidSlotsWithSameKey(self.underlying.storage, Slot(j as int), Slot(it.i as int));
+        }
+      }
+      setUpToLeContents(self, i as int);
+      setUpToEachKeyExplainedByPassedIndex(self, i as nat);
+    }
+  }
+  method Clone<V>(self: LinearHashMap<V>) returns (self': LinearHashMap<V>)
+    ensures self' == self
+    decreases self
+  {
+    var LinearHashMap(underlying: FixedSizeLinearHashMap<V>, count: uint64, contents: map<uint64, V>) := self;
+    var FixedSizeLinearHashMap(storage: seq<Item<V>>, fCount: uint64, fContents: map<uint64, Option<V>>) := underlying;
+    shared_seq_length_bound(storage);
+    var storage': seq<Item<V>> := AllocAndCopy(storage, 0, seq_length(storage));
+    self' := LinearHashMap(FixedSizeLinearHashMap(storage', fCount, fContents), count, contents);
+  }
+}
+Dafny program verifier did not attempt verification

@@ -1,0 +1,18 @@
+// CommitterReplayImpl.i.dfy
+module CommitterReplayImpl {
+  method JournalReplayOne(k: ImplConstants, cm: Committer)
+    requires cm.Inv()
+    requires cm.status == CommitterModel.StatusReady
+    requires !JournalistModel.isReplayEmpty(cm.journalist.I())
+    modifies cm.Repr
+    ensures cm.Inv()
+    ensures cm.Repr == old(cm.Repr)
+    ensures cm.I() == CommitterReplayModel.JournalReplayOne(Ic(k), old(cm.I()))
+    decreases k, cm
+  {
+    CommitterReplayModel.reveal_JournalReplayOne();
+    cm.reveal_ReprInv();
+    cm.journalist.replayJournalPop();
+    cm.reveal_ReprInv();
+  }
+}

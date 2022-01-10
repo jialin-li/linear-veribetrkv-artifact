@@ -1,0 +1,1321 @@
+// IndirectionTableModel.i.dfy
+module IndirectionTableModel {
+  datatype Entry = Entry(loc: Option<Location>, succs: seq<BT.G.Reference>, predCount: uint64)
+  type HashMap = MutableMapModel.LinearHashMap<Entry>
+  datatype IndirectionTable = IndirectionTable(t: HashMap, garbageQueue: Option<LruModel.LruQueue>, refUpperBound: uint64, findLoclessIterator: Option<MutableMapModel.SimpleIterator>, ghost locs: map<BT.G.Reference, Location>, ghost graph: map<BT.G.Reference, seq<BT.G.Reference>>, ghost predCounts: map<BT.G.Reference, int>)
+  datatype PredecessorEdge = PredecessorEdge(src: BT.G.Reference, ghost idx: int)
+  function Locs(t: HashMap): map<BT.G.Reference, Location>
+    decreases t
+  {
+    map ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents && t.contents[ref].loc.Some? :: t.contents[ref].loc.value
+  }
+  function Graph(t: HashMap): map<BT.G.Reference, seq<BT.G.Reference>>
+    decreases t
+  {
+    map ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents :: t.contents[ref].succs
+  }
+  function PredCounts(t: HashMap): map<BT.G.Reference, int>
+    decreases t
+  {
+    map ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents :: t.contents[ref].predCount as int
+  }
+  function PredecessorSet(graph: map<BT.G.Reference, seq<BT.G.Reference>>, dest: BT.G.Reference): set<PredecessorEdge>
+    decreases graph, dest
+  {
+    set src: NativeTypes.uint64, idx: int {:trigger PredecessorEdge(src, idx)} {:trigger graph[src][idx]} | src in graph && 0 <= idx < |graph[src]| && graph[src][idx] == dest :: PredecessorEdge(src, idx)
+  }
+  function PredecessorSetRestricted(graph: map<BT.G.Reference, seq<BT.G.Reference>>, dest: BT.G.Reference, domain: set<BT.G.Reference>): set<PredecessorEdge>
+    decreases graph, dest, domain
+  {
+    set src: NativeTypes.uint64, idx: int {:trigger PredecessorEdge(src, idx)} {:trigger graph[src][idx]} | src in graph && 0 <= idx < |graph[src]| && graph[src][idx] == dest && src in domain :: PredecessorEdge(src, idx)
+  }
+  function PredecessorSetRestrictedPartial(graph: map<BT.G.Reference, seq<BT.G.Reference>>, dest: BT.G.Reference, domain: set<BT.G.Reference>, next: BT.G.Reference, j: int): set<PredecessorEdge>
+    decreases graph, dest, domain, next, j
+  {
+    set src: NativeTypes.uint64, idx: int {:trigger PredecessorEdge(src, idx)} {:trigger graph[src][idx]} | src in graph && 0 <= idx < |graph[src]| && graph[src][idx] == dest && (src in domain || (src == next && idx < j)) :: PredecessorEdge(src, idx)
+  }
+  predicate GraphClosedRestricted(graph: map<BT.G.Reference, seq<BT.G.Reference>>, domain: set<BT.G.Reference>)
+    decreases graph, domain
+  {
+    forall ref: NativeTypes.uint64 {:trigger graph[ref]} {:trigger ref in domain} | ref in graph && ref in domain :: 
+      forall i: int {:trigger graph[ref][i]} | 0 <= i < |graph[ref]| :: 
+        graph[ref][i] in graph
+  }
+  predicate GraphClosedRestrictedPartial(graph: map<BT.G.Reference, seq<BT.G.Reference>>, domain: set<BT.G.Reference>, next: BT.G.Reference, j: int)
+    requires next in graph
+    requires 0 <= j <= |graph[next]|
+    decreases graph, domain, next, j
+  {
+    GraphClosedRestricted(graph, domain) &&
+    forall i: int {:trigger graph[next][i]} | 0 <= i < j :: 
+      graph[next][i] in graph
+  }
+  function IsRoot(ref: BT.G.Reference): int
+    decreases ref
+  {
+    if ref == BT.G.Root() then
+      1
+    else
+      0
+  }
+  predicate ValidPredCounts(predCounts: map<BT.G.Reference, int>, graph: map<BT.G.Reference, seq<BT.G.Reference>>)
+    decreases predCounts, graph
+  {
+    forall ref: NativeTypes.uint64 {:trigger IsRoot(ref)} {:trigger PredecessorSet(graph, ref)} {:trigger predCounts[ref]} {:trigger ref in predCounts} | ref in predCounts :: 
+      predCounts[ref] == |PredecessorSet(graph, ref)| + IsRoot(ref)
+  }
+  function MaxSize(): int
+  {
+    IndirectionTableMaxSize()
+  }
+  function method MaxSizeUint64(): uint64
+  {
+    IndirectionTableMaxSizeUint64()
+  }
+  protected predicate Inv(self: IndirectionTable)
+    ensures Inv(self) ==> forall ref: NativeTypes.uint64 {:trigger ref in self.graph} {:trigger ref in self.locs} | ref in self.locs :: ref in self.graph
+    decreases self
+  {
+    Inv1(self)
+  }
+  predicate TrackingGarbage(self: IndirectionTable)
+    decreases self
+  {
+    self.garbageQueue.Some?
+  }
+  predicate Inv1(self: IndirectionTable)
+    decreases self
+  {
+    MutableMapModel.Inv(self.t) &&
+    self.locs == Locs(self.t) &&
+    self.graph == Graph(self.t) &&
+    self.predCounts == PredCounts(self.t) &&
+    ValidPredCounts(self.predCounts, self.graph) &&
+    BC.GraphClosed(self.graph) &&
+    (forall ref: NativeTypes.uint64 {:trigger self.graph[ref]} {:trigger ref in self.graph} | ref in self.graph :: 
+      |self.graph[ref]| <= MaxNumChildren()) &&
+    (self.garbageQueue.Some? ==>
+      LruModel.WF(self.garbageQueue.value) &&
+      (forall ref: uint64 {:trigger ref in LruModel.I(self.garbageQueue.value)} {:trigger self.t.contents[ref]} {:trigger ref in self.t.contents} | ref in self.t.contents && self.t.contents[ref].predCount == 0 :: 
+        ref in LruModel.I(self.garbageQueue.value)) &&
+      forall ref: uint64 {:trigger self.t.contents[ref]} {:trigger ref in self.t.contents} {:trigger ref in LruModel.I(self.garbageQueue.value)} | ref in LruModel.I(self.garbageQueue.value) :: 
+        ref in self.t.contents &&
+        self.t.contents[ref].predCount == 0) &&
+    BT.G.Root() in self.t.contents &&
+    self.t.count as int <= MaxSize() &&
+    (forall ref: uint64 {:trigger ref in self.graph} | ref in self.graph :: 
+      ref <= self.refUpperBound) &&
+    (self.findLoclessIterator.Some? ==>
+      MutableMapModel.WFSimpleIter(self.t, self.findLoclessIterator.value) &&
+      forall r: uint64 {:trigger r in self.locs} {:trigger r in self.findLoclessIterator.value.s} | r in self.findLoclessIterator.value.s :: 
+        r in self.locs)
+  }
+  function IHashMap(m: HashMap): SectorType.IndirectionTable
+    decreases m
+  {
+    SectorType.IndirectionTable(Locs(m), Graph(m))
+  }
+  function I(self: IndirectionTable): SectorType.IndirectionTable
+    decreases self
+  {
+    SectorType.IndirectionTable(self.locs, self.graph)
+  }
+  function FromHashMap(m: HashMap, q: Option<LruModel.LruQueue>, refUpperBound: uint64, findLoclessIterator: Option<MutableMapModel.SimpleIterator>): IndirectionTable
+    decreases m, q, refUpperBound, findLoclessIterator
+  {
+    IndirectionTable(m, q, refUpperBound, findLoclessIterator, Locs(m), Graph(m), PredCounts(m))
+  }
+  function {:opaque} {:fuel 0, 0} GetEntry(self: IndirectionTable, ref: BT.G.Reference): (e: Option<Entry>)
+    requires Inv(self)
+    ensures e.None? ==> ref !in self.graph
+    ensures e.Some? ==> ref in self.graph
+    ensures e.Some? ==> self.graph[ref] == e.value.succs
+    ensures e.Some? && e.value.loc.Some? ==> ref in self.locs && self.locs[ref] == e.value.loc.value
+    ensures ref in self.locs ==> e.Some? && e.value.loc.Some?
+    decreases self, ref
+  {
+    MutableMapModel.Get(self.t, ref)
+  }
+  predicate {:opaque} {:fuel 0, 0} HasEmptyLoc(self: IndirectionTable, ref: BT.G.Reference)
+    requires Inv(self)
+    ensures HasEmptyLoc(self, ref) == (ref in self.graph && ref !in self.locs)
+    decreases self, ref
+  {
+    var entry: Option<Entry> := MutableMapModel.Get(self.t, ref);
+    entry.Some? &&
+    entry.value.loc.None?
+  }
+  function {:opaque} {:fuel 0, 0} AddLocIfPresent(self: IndirectionTable, ref: BT.G.Reference, loc: Location): (IndirectionTable, bool)
+    requires Inv(self)
+    ensures var (self': IndirectionTable, added: bool) := AddLocIfPresent(self, ref, loc); Inv(self') && added == (ref in self.graph && ref !in self.locs) && self'.graph == self.graph && (added ==> self'.locs == self.locs[ref := loc]) && (!added ==> self'.locs == self.locs) && (TrackingGarbage(self) ==> TrackingGarbage(self'))
+    decreases self, ref, loc
+  {
+    var it: SimpleIterator := MutableMapModel.FindSimpleIter(self.t, ref);
+    var oldEntry: IteratorOutput<Entry> := MutableMapModel.SimpleIterOutput(self.t, it);
+    var added: bool := oldEntry.Next? && oldEntry.value.loc.None?;
+    if added then
+      var t: LinearHashMap<Entry> := MutableMapModel.UpdateByIter(self.t, it, Entry(Some(loc), oldEntry.value.succs, oldEntry.value.predCount));
+      assert Graph(t) == Graph(self.t);
+      assert PredCounts(t) == PredCounts(self.t);
+      var _: int := if self.findLoclessIterator.Some? then MutableMapModel.UpdatePreservesSimpleIter(self.t, it, Entry(Some(loc), oldEntry.value.succs, oldEntry.value.predCount), self.findLoclessIterator.value); 0 else 0;
+      (FromHashMap(t, self.garbageQueue, self.refUpperBound, self.findLoclessIterator), true)
+    else
+      (self, false)
+  }
+  function SeqCountSet(s: seq<BT.G.Reference>, ref: BT.G.Reference, lb: int): set<int>
+    requires 0 <= lb <= |s|
+    decreases s, ref, lb
+  {
+    set i: int {:trigger s[i]} | lb <= i < |s| && s[i] == ref
+  }
+  function SeqCount(s: seq<BT.G.Reference>, ref: BT.G.Reference, lb: int): int
+    requires 0 <= lb <= |s|
+    decreases s, ref, lb
+  {
+    |SeqCountSet(s, ref, lb)|
+  }
+  function PredecessorSetExcept(graph: map<BT.G.Reference, seq<BT.G.Reference>>, dest: BT.G.Reference, except: BT.G.Reference): set<PredecessorEdge>
+    decreases graph, dest, except
+  {
+    set src: NativeTypes.uint64, idx: int {:trigger PredecessorEdge(src, idx)} {:trigger graph[src][idx]} | src in graph && 0 <= idx < |graph[src]| && graph[src][idx] == dest && src != except :: PredecessorEdge(src, idx)
+  }
+  predicate ValidPredCountsIntermediate(predCounts: map<BT.G.Reference, int>, graph: map<BT.G.Reference, seq<BT.G.Reference>>, newSuccs: seq<BT.G.Reference>, oldSuccs: seq<BT.G.Reference>, newIdx: int, oldIdx: int)
+    requires 0 <= newIdx <= |newSuccs|
+    requires 0 <= oldIdx <= |oldSuccs|
+    decreases predCounts, graph, newSuccs, oldSuccs, newIdx, oldIdx
+  {
+    forall ref: NativeTypes.uint64 {:trigger SeqCount(oldSuccs, ref, oldIdx)} {:trigger SeqCount(newSuccs, ref, newIdx)} {:trigger IsRoot(ref)} {:trigger PredecessorSet(graph, ref)} {:trigger predCounts[ref]} {:trigger ref in predCounts} | ref in predCounts :: 
+      predCounts[ref] == |PredecessorSet(graph, ref)| + IsRoot(ref) - SeqCount(newSuccs, ref, newIdx) + SeqCount(oldSuccs, ref, oldIdx)
+  }
+  lemma SeqCountPlusPredecessorSetExcept(graph: map<BT.G.Reference, seq<BT.G.Reference>>, dest: BT.G.Reference, except: BT.G.Reference)
+    ensures var succs: seq<NativeTypes.uint64> := if except in graph then graph[except] else []; SeqCount(succs, dest, 0) + |PredecessorSetExcept(graph, dest, except)| == |PredecessorSet(graph, dest)|
+    decreases graph, dest, except
+  {
+    ghost var succs: seq<NativeTypes.uint64> := if except in graph then graph[except] else [];
+    ghost var a1: set<int> := SeqCountSet(succs, dest, 0);
+    ghost var a: set<PredecessorEdge> := set src: NativeTypes.uint64, idx: int {:trigger PredecessorEdge(src, idx)} {:trigger graph[src][idx]} | src in graph && 0 <= idx < |graph[src]| && graph[src][idx] == dest && src == except :: PredecessorEdge(src, idx);
+    ghost var b: set<PredecessorEdge> := PredecessorSetExcept(graph, dest, except);
+    ghost var c: set<PredecessorEdge> := PredecessorSet(graph, dest);
+    assert a + b == c;
+    assert a !! b;
+    assert |a| + |b| == |c|;
+    ghost var relation: iset<(PredecessorEdge, int)> := iset p: (PredecessorEdge, int) {:trigger p.1} {:trigger p.0} | p.0.idx == p.1;
+    forall x: PredecessorEdge {:trigger x in a} | x in a
+      ensures exists y: int {:trigger (x, y)} {:trigger y in a1} :: y in a1 && (x, y) in relation
+    {
+      ghost var y: int := x.idx;
+      assert y in a1 && (x, y) in relation;
+    }
+    forall y: int {:trigger y in a1} | y in a1
+      ensures exists x: PredecessorEdge {:trigger (x, y)} {:trigger x in a} :: x in a && (x, y) in relation
+    {
+      ghost var x: PredecessorEdge := PredecessorEdge(except, y);
+      assert x in a && (x, y) in relation;
+    }
+    SetBijectivity.BijectivityImpliesEqualCardinality(a, a1, relation);
+    assert |a| == |a1|;
+  }
+  predicate RefcountUpdateInv(t: HashMap, q: LruModel.LruQueue, changingRef: BT.G.Reference, newSuccs: seq<BT.G.Reference>, oldSuccs: seq<BT.G.Reference>, newIdx: int, oldIdx: int)
+    decreases t, changingRef, newSuccs, oldSuccs, newIdx, oldIdx
+  {
+    MutableMapModel.Inv(t) &&
+    LruModel.WF(q) &&
+    t.count as int <= MaxSize() &&
+    |oldSuccs| <= MaxNumChildren() &&
+    |newSuccs| <= MaxNumChildren() &&
+    (forall ref: NativeTypes.uint64 {:trigger Graph(t)[ref]} {:trigger ref in Graph(t)} | ref in Graph(t) :: 
+      |Graph(t)[ref]| <= MaxNumChildren()) &&
+    0 <= newIdx <= |newSuccs| &&
+    0 <= oldIdx <= |oldSuccs| &&
+    (changingRef in Graph(t) ==>
+      Graph(t)[changingRef] == newSuccs) &&
+    (changingRef !in Graph(t) ==>
+      newSuccs == []) &&
+    ValidPredCountsIntermediate(PredCounts(t), Graph(t), newSuccs, oldSuccs, newIdx, oldIdx) &&
+    (forall j: int {:trigger oldSuccs[j]} | 0 <= j < |oldSuccs| :: 
+      oldSuccs[j] in t.contents) &&
+    BC.GraphClosed(Graph(t)) &&
+    (forall ref: uint64 {:trigger ref in LruModel.I(q)} {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents && t.contents[ref].predCount == 0 :: 
+      ref in LruModel.I(q)) &&
+    (forall ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} {:trigger ref in LruModel.I(q)} | ref in LruModel.I(q) :: 
+      ref in t.contents &&
+      t.contents[ref].predCount == 0) &&
+    BT.G.Root() in t.contents
+  }
+  lemma SeqCountLePredecessorSet(graph: map<BT.G.Reference, seq<BT.G.Reference>>, ref: BT.G.Reference, r: BT.G.Reference, lb: int)
+    requires r in graph
+    requires 0 <= lb <= |graph[r]|
+    ensures SeqCount(graph[r], ref, lb) <= |PredecessorSet(graph, ref)|
+    decreases graph, ref, r, lb
+  {
+    ghost var setA: set<int> := set i: int {:trigger graph[r][i]} | lb <= i < |graph[r]| && graph[r][i] == ref;
+    ghost var setB: set<PredecessorEdge> := set src: NativeTypes.uint64, idx: int {:trigger PredecessorEdge(src, idx)} {:trigger graph[src][idx]} | src in graph && 0 <= idx < |graph[src]| && graph[src][idx] == ref && src == r && lb <= idx :: PredecessorEdge(src, idx);
+    ghost var setC: set<PredecessorEdge> := set src: NativeTypes.uint64, idx: int {:trigger PredecessorEdge(src, idx)} {:trigger graph[src][idx]} | src in graph && 0 <= idx < |graph[src]| && graph[src][idx] == ref :: PredecessorEdge(src, idx);
+    calc == {
+      |SeqCountSet(graph[r], ref, lb)|;
+    ==
+      |setA|;
+    ==
+      {
+        ghost var relation: iset<(int, PredecessorEdge)> := iset i: int, src: NativeTypes.uint64, idx: int {:trigger (i, PredecessorEdge(src, idx))} | src == r && i == idx :: (i, PredecessorEdge(src, idx));
+        forall a: int {:trigger a in setA} | a in setA
+          ensures exists b: PredecessorEdge {:trigger (a, b)} {:trigger b in setB} :: b in setB && (a, b) in relation
+        {
+          ghost var b: PredecessorEdge := PredecessorEdge(r, a);
+          assert b in setB;
+          assert (a, b) in relation;
+        }
+        forall b: PredecessorEdge {:trigger b in setB} | b in setB
+          ensures exists a: int {:trigger (a, b)} {:trigger a in setA} :: a in setA && (a, b) in relation
+        {
+          ghost var a: int := b.idx;
+          assert a in setA;
+          assert (a, b) in relation;
+        }
+        SetBijectivity.BijectivityImpliesEqualCardinality(setA, setB, relation);
+      }
+      |setB|;
+    }
+    SetInclusionImpliesSmallerCardinality(setB, setC);
+  }
+  lemma SeqCountInc(s: seq<BT.G.Reference>, ref: BT.G.Reference, idx: int)
+    requires 0 <= idx < |s|
+    requires s[idx] == ref
+    ensures SeqCount(s, ref, idx + 1) == SeqCount(s, ref, idx) - 1
+    decreases s, ref, idx
+  {
+    ghost var a: set<int> := set i: int {:trigger s[i]} | idx <= i < |s| && s[i] == ref;
+    ghost var b: set<int> := set i: int {:trigger s[i]} | idx + 1 <= i < |s| && s[i] == ref;
+    assert a == b + {idx};
+  }
+  lemma SeqCountIncOther(s: seq<BT.G.Reference>, ref: BT.G.Reference, idx: int)
+    requires 0 <= idx < |s|
+    requires s[idx] != ref
+    ensures SeqCount(s, ref, idx + 1) == SeqCount(s, ref, idx)
+    decreases s, ref, idx
+  {
+    ghost var a: set<int> := set i: int {:trigger s[i]} | idx <= i < |s| && s[i] == ref;
+    ghost var b: set<int> := set i: int {:trigger s[i]} | idx + 1 <= i < |s| && s[i] == ref;
+    assert a == b;
+  }
+  lemma LemmaUpdatePredCountsDecStuff(t: HashMap, q: LruModel.LruQueue, changingRef: BT.G.Reference, newSuccs: seq<BT.G.Reference>, oldSuccs: seq<BT.G.Reference>, idx: int)
+    requires RefcountUpdateInv(t, q, changingRef, newSuccs, oldSuccs, |newSuccs|, idx)
+    ensures idx < |oldSuccs| ==> oldSuccs[idx] in t.contents
+    ensures idx < |oldSuccs| ==> t.contents[oldSuccs[idx]].predCount > 0
+    ensures idx < |oldSuccs| ==> var (t': HashMap, q': LruModel.LruQueue) := PredDec(t, q, oldSuccs[idx]); RefcountUpdateInv(t', q', changingRef, newSuccs, oldSuccs, |newSuccs|, idx + 1)
+    ensures |LruModel.I(q)| <= 4294967296
+    decreases t, changingRef, newSuccs, oldSuccs, idx
+  {
+    assert LruModel.I(q) <= t.contents.Keys;
+    SetInclusionImpliesSmallerCardinality(LruModel.I(q), t.contents.Keys);
+    assert |t.contents.Keys| == |t.contents|;
+    if idx < |oldSuccs| {
+      ghost var graph: map<NativeTypes.uint64, seq<BT.G.Reference>> := Graph(t);
+      assert oldSuccs[idx] in graph;
+      assert oldSuccs[idx] in t.contents;
+      ghost var ref: NativeTypes.uint64 := oldSuccs[idx];
+      assert t.contents[ref].predCount as int == |PredecessorSet(graph, ref)| + IsRoot(ref) - SeqCount(newSuccs, ref, |newSuccs|) + SeqCount(oldSuccs, ref, idx);
+      if changingRef in graph {
+        SeqCountLePredecessorSet(graph, ref, changingRef, |newSuccs|);
+        assert |PredecessorSet(graph, ref)| >= SeqCount(graph[changingRef], ref, |newSuccs|);
+      }
+      SeqCountInc(oldSuccs, ref, idx);
+      assert SeqCount(oldSuccs, ref, idx + 1) == SeqCount(oldSuccs, ref, idx) - 1;
+      assert t.contents[oldSuccs[idx]].predCount > 0;
+      var (t': HashMap, q': LruModel.LruQueue) := PredDec(t, q, oldSuccs[idx]);
+      assert Graph(t) == Graph(t');
+      ghost var predCounts: map<BT.G.Reference, int> := PredCounts(t);
+      ghost var predCounts': map<NativeTypes.uint64, int> := PredCounts(t');
+      forall r: NativeTypes.uint64 {:trigger SeqCount(newSuccs, r, |newSuccs|)} {:trigger IsRoot(r)} {:trigger PredecessorSet(graph, r)} {:trigger predCounts'[r]} {:trigger r in predCounts'} | r in predCounts'
+        ensures predCounts'[r] == |PredecessorSet(graph, r)| + IsRoot(r) - SeqCount(newSuccs, r, |newSuccs|) + SeqCount(oldSuccs, r, idx + 1)
+      {
+        if r == ref {
+        } else {
+          SeqCountIncOther(oldSuccs, r, idx);
+          assert SeqCount(oldSuccs, r, idx) == SeqCount(oldSuccs, r, idx + 1);
+        }
+      }
+      LruModel.LruUse(q, ref);
+    }
+  }
+  lemma PredecessorSetRestrictedSizeBound(graph: map<BT.G.Reference, seq<BT.G.Reference>>, dest: BT.G.Reference, domain: set<BT.G.Reference>)
+    requires |graph| <= MaxSize()
+    requires forall ref: NativeTypes.uint64 {:trigger graph[ref]} {:trigger ref in graph} | ref in graph :: |graph[ref]| <= MaxNumChildren()
+    ensures |PredecessorSetRestricted(graph, dest, domain)| <= MaxSize() * MaxNumChildren()
+    decreases graph, dest, domain
+  {
+    ghost var s1: set<PredecessorEdge> := set src: NativeTypes.uint64, idx: int {:trigger PredecessorEdge(src, idx)} {:trigger graph[src][idx]} | src in graph && 0 <= idx < |graph[src]| && graph[src][idx] == dest && src in domain :: PredecessorEdge(src, idx);
+    ghost var s2: set<PredecessorEdge> := set src: NativeTypes.uint64, idx: int {:trigger PredecessorEdge(src, idx)} {:trigger idx in SetRange(MaxNumChildren()), src in graph.Keys} | src in graph.Keys && idx in SetRange(MaxNumChildren()) :: PredecessorEdge(src, idx);
+    ghost var s3: set<(NativeTypes.uint64, int)> := set src: NativeTypes.uint64, idx: int {:trigger (src, idx)} {:trigger idx in SetRange(MaxNumChildren()), src in graph.Keys} | src in graph.Keys && idx in SetRange(MaxNumChildren()) :: (src, idx);
+    assert s1 <= s2;
+    SetInclusionImpliesSmallerCardinality(s1, s2);
+    assert |s1| <= |s2|;
+    ghost var relation: iset<(PredecessorEdge, (BT.G.Reference, int))> := iset t: (PredecessorEdge, (BT.G.Reference, int)) {:trigger t.1} {:trigger t.0} | t.0.src == t.1.0 && t.0.idx == t.1.1;
+    forall a: PredecessorEdge {:trigger a in s2} | a in s2
+      ensures exists b: (NativeTypes.uint64, int) {:trigger (a, b)} {:trigger b in s3} :: b in s3 && (a, b) in relation
+    {
+      ghost var b: (BT.G.Reference, int) := (a.src, a.idx);
+      assert b in s3;
+    }
+    forall b: (NativeTypes.uint64, int) {:trigger b in s3} | b in s3
+      ensures exists a: PredecessorEdge {:trigger (a, b)} {:trigger a in s2} :: a in s2 && (a, b) in relation
+    {
+      ghost var a: PredecessorEdge := PredecessorEdge(b.0, b.1);
+      assert a in s2;
+    }
+    SetBijectivity.BijectivityImpliesEqualCardinality(s2, s3, relation);
+    assert |s2| == |s3|;
+    ghost var x1: set<BT.G.Reference> := graph.Keys;
+    ghost var y1: set<int> := SetRange(MaxNumChildren());
+    ghost var z1: set<(NativeTypes.uint64, int)> := set a: NativeTypes.uint64, b: int {:trigger (a, b)} {:trigger b in y1, a in x1} | a in x1 && b in y1 :: (a, b);
+    SetBijectivity.CrossProductCardinality(x1, y1, z1);
+    assert |s3| == |z1| == |x1| * |y1| == |graph.Keys| * |SetRange(MaxNumChildren())|;
+    assert |graph.Keys| <= MaxSize();
+    CardinalitySetRange(MaxNumChildren());
+    assert |SetRange(MaxNumChildren())| == MaxNumChildren();
+  }
+  lemma PredecessorSetSizeBound(graph: map<BT.G.Reference, seq<BT.G.Reference>>, dest: BT.G.Reference)
+    requires |graph| <= MaxSize()
+    requires forall ref: NativeTypes.uint64 {:trigger graph[ref]} {:trigger ref in graph} | ref in graph :: |graph[ref]| <= MaxNumChildren()
+    ensures |PredecessorSet(graph, dest)| <= MaxSize() * MaxNumChildren()
+    decreases graph, dest
+  {
+    PredecessorSetRestrictedSizeBound(graph, dest, graph.Keys);
+    assert PredecessorSet(graph, dest) == PredecessorSetRestricted(graph, dest, graph.Keys);
+  }
+  lemma SeqCountBound(s: seq<BT.G.Reference>, ref: BT.G.Reference, lb: int)
+    requires 0 <= lb <= |s|
+    ensures SeqCount(s, ref, lb) <= |s|
+    decreases s, ref, lb
+  {
+    ghost var s1: set<int> := SeqCountSet(s, ref, lb);
+    ghost var s2: set<int> := SetRange(|s|);
+    assert s1 <= s2;
+    SetInclusionImpliesSmallerCardinality(s1, s2);
+    CardinalitySetRange(|s|);
+  }
+  lemma LemmaUpdatePredCountsIncStuff(t: HashMap, q: LruModel.LruQueue, changingRef: BT.G.Reference, newSuccs: seq<BT.G.Reference>, oldSuccs: seq<BT.G.Reference>, idx: int)
+    requires RefcountUpdateInv(t, q, changingRef, newSuccs, oldSuccs, idx, 0)
+    ensures idx < |newSuccs| ==> newSuccs[idx] in t.contents
+    ensures idx < |newSuccs| ==> t.contents[newSuccs[idx]].predCount < 18446744073709551615
+    ensures idx < |newSuccs| ==> var (t': HashMap, q': LruModel.LruQueue) := PredInc(t, q, newSuccs[idx]); RefcountUpdateInv(t', q', changingRef, newSuccs, oldSuccs, idx + 1, 0)
+    ensures MutableMapModel.Inv(t)
+    ensures 0 <= idx <= |newSuccs|
+    decreases t, changingRef, newSuccs, oldSuccs, idx
+  {
+    if idx < |newSuccs| {
+      ghost var graph: map<BT.G.Reference, seq<BT.G.Reference>> := Graph(t);
+      assert newSuccs[idx] in graph;
+      assert newSuccs[idx] in t.contents;
+      ghost var ref: NativeTypes.uint64 := newSuccs[idx];
+      assert t.contents[ref].predCount as int == |PredecessorSet(graph, ref)| + IsRoot(ref) - SeqCount(newSuccs, ref, idx) + SeqCount(oldSuccs, ref, 0);
+      SeqCountInc(newSuccs, ref, idx);
+      assert SeqCount(newSuccs, ref, idx + 1) == SeqCount(newSuccs, ref, idx) - 1;
+      lemma_count_eq_graph_size(t);
+      PredecessorSetSizeBound(graph, ref);
+      SeqCountBound(oldSuccs, ref, 0);
+      assert t.contents[ref].predCount < 18446744073709551615;
+      var (t': HashMap, q': LruModel.LruQueue) := PredInc(t, q, newSuccs[idx]);
+      assert Graph(t) == Graph(t');
+      ghost var predCounts: map<BT.G.Reference, int> := PredCounts(t);
+      ghost var predCounts': map<NativeTypes.uint64, int> := PredCounts(t');
+      forall r: NativeTypes.uint64 {:trigger SeqCount(oldSuccs, r, 0)} {:trigger IsRoot(r)} {:trigger PredecessorSet(graph, r)} {:trigger predCounts'[r]} {:trigger r in predCounts'} | r in predCounts'
+        ensures predCounts'[r] == |PredecessorSet(graph, r)| + IsRoot(r) - SeqCount(newSuccs, r, idx + 1) + SeqCount(oldSuccs, r, 0)
+      {
+        if r == ref {
+        } else {
+          SeqCountIncOther(newSuccs, r, idx);
+        }
+      }
+      LruModel.LruRemove(q, ref);
+    }
+  }
+  function PredInc(t: HashMap, q: LruModel.LruQueue, ref: BT.G.Reference): (HashMap, LruModel.LruQueue)
+    requires MutableMapModel.Inv(t)
+    requires t.count as nat < 18446744073709551616 / 8
+    requires ref in t.contents
+    requires t.contents[ref].predCount < 18446744073709551615
+    decreases t, ref
+  {
+    var oldEntry: Entry := t.contents[ref];
+    var newEntry: Entry := oldEntry.(predCount := oldEntry.predCount + 1);
+    var t': LinearHashMap<Entry> := MutableMapModel.Insert(t, ref, newEntry);
+    var q': LruQueue := if oldEntry.predCount == 0 then LruModel.Remove(q, ref) else q;
+    (t', q')
+  }
+  function PredDec(t: HashMap, q: LruModel.LruQueue, ref: BT.G.Reference): (HashMap, LruModel.LruQueue)
+    requires MutableMapModel.Inv(t)
+    requires t.count as nat < 18446744073709551616 / 8
+    requires ref in t.contents
+    requires t.contents[ref].predCount > 0
+    decreases t, ref
+  {
+    var oldEntry: Entry := t.contents[ref];
+    var newEntry: Entry := oldEntry.(predCount := oldEntry.predCount - 1);
+    var t': LinearHashMap<Entry> := MutableMapModel.Insert(t, ref, newEntry);
+    var q': LruQueue := if oldEntry.predCount == 1 then LruModel.Use(q, ref) else q;
+    (t', q')
+  }
+  function UpdatePredCountsDec(t: HashMap, q: LruModel.LruQueue, changingRef: BT.G.Reference, newSuccs: seq<BT.G.Reference>, oldSuccs: seq<BT.G.Reference>, idx: uint64): (res: (HashMap, LruModel.LruQueue))
+    requires RefcountUpdateInv(t, q, changingRef, newSuccs, oldSuccs, |newSuccs|, idx as int)
+    ensures var (t': HashMap, q': LruModel.LruQueue) := res; RefcountUpdateInv(t', q', changingRef, newSuccs, oldSuccs, |newSuccs|, |oldSuccs|) && Graph(t) == Graph(t') && Locs(t) == Locs(t')
+    decreases |oldSuccs| - idx as int
+  {
+    LemmaUpdatePredCountsDecStuff(t, q, changingRef, newSuccs, oldSuccs, idx as int);
+    if idx == |oldSuccs| as uint64 then
+      (t, q)
+    else
+      var (t': HashMap, q': LruModel.LruQueue) := PredDec(t, q, oldSuccs[idx]); UpdatePredCountsDec(t', q', changingRef, newSuccs, oldSuccs, idx + 1)
+  }
+  function {:fuel RefcountUpdateInv, 0} UpdatePredCountsInc(t: HashMap, q: LruModel.LruQueue, changingRef: BT.G.Reference, newSuccs: seq<BT.G.Reference>, oldSuccs: seq<BT.G.Reference>, idx: uint64): (res: (HashMap, LruModel.LruQueue))
+    requires RefcountUpdateInv(t, q, changingRef, newSuccs, oldSuccs, idx as int, 0)
+    ensures var (t': HashMap, q': LruModel.LruQueue) := res; RefcountUpdateInv(t', q', changingRef, newSuccs, oldSuccs, |newSuccs|, |oldSuccs|) && Graph(t) == Graph(t') && Locs(t) == Locs(t')
+    decreases |newSuccs| - idx as int
+  {
+    LemmaUpdatePredCountsIncStuff(t, q, changingRef, newSuccs, oldSuccs, idx as int);
+    if idx == |newSuccs| as uint64 then
+      UpdatePredCountsDec(t, q, changingRef, newSuccs, oldSuccs, 0)
+    else
+      var (t': HashMap, q': LruModel.LruQueue) := PredInc(t, q, newSuccs[idx]); UpdatePredCountsInc(t', q', changingRef, newSuccs, oldSuccs, idx + 1)
+  }
+  predicate SuccsValid(succs: seq<BT.G.Reference>, graph: map<BT.G.Reference, seq<BT.G.Reference>>)
+    decreases succs, graph
+  {
+    forall ref: NativeTypes.uint64 {:trigger ref in graph} {:trigger ref in succs} | ref in succs :: 
+      ref in graph
+  }
+  lemma QueueSizeBound(self: IndirectionTable)
+    requires Inv(self)
+    ensures self.garbageQueue.Some? ==> |LruModel.I(self.garbageQueue.value)| <= 4294967296
+    decreases self
+  {
+    if self.garbageQueue.Some? {
+      SetInclusionImpliesSmallerCardinality(LruModel.I(self.garbageQueue.value), self.t.contents.Keys);
+      assert |self.t.contents.Keys| == |self.t.contents|;
+    }
+  }
+  lemma LemmaUpdateAndRemoveLocStuff(self: IndirectionTable, ref: BT.G.Reference, succs: seq<BT.G.Reference>)
+    requires Inv(self)
+    requires TrackingGarbage(self)
+    requires |succs| <= MaxNumChildren()
+    requires SuccsValid(succs, self.graph)
+    requires self.t.count as nat <= MaxSize() - 1
+    ensures var oldEntry: Option<Entry> := MutableMapModel.Get(self.t, ref); var predCount: uint64 := if oldEntry.Some? then oldEntry.value.predCount else 0; var t: LinearHashMap<Entry> := MutableMapModel.Insert(self.t, ref, Entry(None, succs, predCount)); var q: LruQueue := if oldEntry.Some? then self.garbageQueue.value else LruModel.Use(self.garbageQueue.value, ref); RefcountUpdateInv(t, q, ref, succs, if oldEntry.Some? then oldEntry.value.succs else [], 0, 0)
+    ensures |LruModel.I(self.garbageQueue.value)| <= 4294967296
+    decreases self, ref, succs
+  {
+    QueueSizeBound(self);
+    ghost var oldEntry: Option<Entry> := MutableMapModel.Get(self.t, ref);
+    ghost var predCount: uint64 := if oldEntry.Some? then oldEntry.value.predCount else 0;
+    ghost var t: LinearHashMap<Entry> := MutableMapModel.Insert(self.t, ref, Entry(None, succs, predCount));
+    ghost var q: LruQueue := if oldEntry.Some? then self.garbageQueue.value else LruModel.Use(self.garbageQueue.value, ref);
+    LruModel.LruUse(self.garbageQueue.value, ref);
+    assert oldEntry.Some? ==> oldEntry.value.succs == Graph(self.t)[ref];
+    assert forall r: NativeTypes.uint64 {:trigger Graph(self.t)[r]} {:trigger Graph(t)[r]} {:trigger r in Graph(self.t)} {:trigger r in Graph(t)} | r != ref && r in Graph(t) :: r in Graph(self.t) && Graph(t)[r] == Graph(self.t)[r];
+    ghost var oldSuccs: seq<BT.G.Reference> := if oldEntry.Some? then oldEntry.value.succs else [];
+    ghost var predCounts: map<NativeTypes.uint64, int> := PredCounts(t);
+    ghost var graph0: map<BT.G.Reference, seq<BT.G.Reference>> := Graph(self.t);
+    ghost var graph: map<BT.G.Reference, seq<BT.G.Reference>> := Graph(t);
+    forall r: NativeTypes.uint64 {:trigger SeqCount(oldSuccs, r, 0)} {:trigger SeqCount(succs, r, 0)} {:trigger IsRoot(r)} {:trigger PredecessorSet(graph, r)} {:trigger predCounts[r]} {:trigger r in predCounts} | r in predCounts
+      ensures predCounts[r] == |PredecessorSet(graph, r)| + IsRoot(r) - SeqCount(succs, r, 0) + SeqCount(oldSuccs, r, 0)
+    {
+      SeqCountPlusPredecessorSetExcept(graph0, r, ref);
+      SeqCountPlusPredecessorSetExcept(graph, r, ref);
+      assert PredecessorSetExcept(graph0, r, ref) == PredecessorSetExcept(graph, r, ref);
+      assert |PredecessorSet(graph0, r)| - SeqCount(oldSuccs, r, 0) == |PredecessorSetExcept(graph0, r, ref)| == |PredecessorSetExcept(graph, r, ref)| == |PredecessorSet(graph, r)| - SeqCount(succs, r, 0);
+    }
+    assert ValidPredCountsIntermediate(PredCounts(t), Graph(t), succs, oldSuccs, 0, 0);
+    forall j: int {:trigger oldSuccs[j]} | 0 <= j < |oldSuccs|
+      ensures oldSuccs[j] in t.contents
+    {
+      assert oldSuccs[j] in graph0;
+      assert oldSuccs[j] in graph;
+    }
+    assert RefcountUpdateInv(t, q, ref, succs, oldSuccs, 0, 0);
+  }
+  lemma LemmaValidPredCountsOfValidPredCountsIntermediate(predCounts: map<BT.G.Reference, int>, graph: map<BT.G.Reference, seq<BT.G.Reference>>, newSuccs: seq<BT.G.Reference>, oldSuccs: seq<BT.G.Reference>)
+    requires ValidPredCountsIntermediate(predCounts, graph, newSuccs, oldSuccs, |newSuccs|, |oldSuccs|)
+    ensures ValidPredCounts(predCounts, graph)
+    decreases predCounts, graph, newSuccs, oldSuccs
+  {
+  }
+  lemma lemma_count_eq_graph_size(t: HashMap)
+    requires MutableMapModel.Inv(t)
+    ensures t.count as int == |Graph(t)|
+    decreases t
+  {
+    assert Graph(t).Keys == t.contents.Keys;
+    assert |Graph(t)| == |Graph(t).Keys| == |t.contents.Keys| == t.count as int;
+  }
+  function {:opaque} {:fuel 0, 0} UpdateAndRemoveLoc(self: IndirectionTable, ref: BT.G.Reference, succs: seq<BT.G.Reference>): (res: (IndirectionTable, Option<Location>))
+    requires Inv(self)
+    requires TrackingGarbage(self)
+    requires |self.graph| < MaxSize()
+    requires |succs| <= MaxNumChildren()
+    requires SuccsValid(succs, self.graph)
+    ensures var (self': IndirectionTable, oldLoc: Option<Location>) := res; Inv(self') && TrackingGarbage(self') && self'.locs == MapRemove1(self.locs, ref) && self'.graph == self.graph[ref := succs] && (oldLoc.None? ==> ref !in self.locs) && (oldLoc.Some? ==> ref in self.locs && self.locs[ref] == oldLoc.value)
+    decreases self, ref, succs
+  {
+    lemma_count_eq_graph_size(self.t);
+    LemmaUpdateAndRemoveLocStuff(self, ref, succs);
+    var oldEntry: Option<Entry> := MutableMapModel.Get(self.t, ref);
+    var predCount: uint64 := if oldEntry.Some? then oldEntry.value.predCount else 0;
+    var q: LruQueue := if oldEntry.Some? then self.garbageQueue.value else LruModel.Use(self.garbageQueue.value, ref);
+    var t: LinearHashMap<Entry> := MutableMapModel.Insert(self.t, ref, Entry(None, succs, predCount));
+    var (t1: HashMap, garbageQueue1: LruModel.LruQueue) := UpdatePredCountsInc(t, q, ref, succs, if oldEntry.Some? then oldEntry.value.succs else [], 0);
+    lemma_count_eq_graph_size(t);
+    lemma_count_eq_graph_size(t1);
+    LemmaValidPredCountsOfValidPredCountsIntermediate(PredCounts(t1), Graph(t1), succs, if oldEntry.Some? then oldEntry.value.succs else []);
+    var refUpperBound': uint64 := if self.refUpperBound > ref then self.refUpperBound else ref;
+    assert forall r: NativeTypes.uint64 {:trigger r in self.graph} {:trigger r in Graph(t1)} | r in Graph(t1) :: r in self.graph || r == ref;
+    var self': IndirectionTable := FromHashMap(t1, Some(garbageQueue1), refUpperBound', None);
+    var oldLoc: Option<Location> := if oldEntry.Some? && oldEntry.value.loc.Some? then oldEntry.value.loc else None;
+    (self', oldLoc)
+  }
+  function {:opaque} {:fuel 0, 0} RemoveLoc(self: IndirectionTable, ref: BT.G.Reference): (res: (IndirectionTable, Option<Location>))
+    requires Inv(self)
+    requires TrackingGarbage(self)
+    requires ref in self.graph
+    ensures var (self': IndirectionTable, oldLoc: Option<Location>) := res; Inv(self') && TrackingGarbage(self') && self'.locs == MapRemove1(self.locs, ref) && self'.graph == self.graph && (oldLoc.None? ==> ref !in self.locs) && (oldLoc.Some? ==> ref in self.locs && self.locs[ref] == oldLoc.value)
+    decreases self, ref
+  {
+    var it: SimpleIterator := MutableMapModel.FindSimpleIter(self.t, ref);
+    var oldEntry: IteratorOutput<Entry> := MutableMapModel.SimpleIterOutput(self.t, it);
+    var predCount: uint64 := oldEntry.value.predCount;
+    var succs: seq<BT.G.Reference> := oldEntry.value.succs;
+    var t: LinearHashMap<Entry> := MutableMapModel.UpdateByIter(self.t, it, Entry(None, succs, predCount));
+    var self': IndirectionTable := FromHashMap(t, self.garbageQueue, self.refUpperBound, None);
+    var oldLoc: Option<Location> := oldEntry.value.loc;
+    assert PredCounts(t) == PredCounts(self.t);
+    assert Graph(t) == Graph(self.t);
+    (self', oldLoc)
+  }
+  function ComputeRefCountsEntryIterate(t: HashMap, succs: seq<BT.G.Reference>, i: uint64): (t': Option<HashMap>)
+    requires MutableMapModel.Inv(t)
+    requires 0 <= i as int <= |succs|
+    requires |succs| <= MaxNumChildren()
+    requires t.count as int <= MaxSize()
+    requires forall ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents :: t.contents[ref].predCount as int <= 281474976710656 + i as int
+    decreases |succs| - i as int
+  {
+    if i == |succs| as uint64 then
+      Some(t)
+    else
+      var ref: NativeTypes.uint64 := succs[i]; var oldEntry: Option<Entry> := MutableMapModel.Get(t, ref); if oldEntry.Some? then var newEntry: Entry := oldEntry.value.(predCount := oldEntry.value.predCount + 1); var t0: LinearHashMap<Entry> := MutableMapModel.Insert(t, ref, newEntry); ComputeRefCountsEntryIterate(t0, succs, i + 1) else None
+  }
+  predicate ComputeRefCountsIterateInv(t: HashMap, copy: HashMap, it: MutableMapModel.Iterator<Entry>)
+    decreases t, copy, it
+  {
+    MutableMapModel.Inv(t) &&
+    MutableMapModel.Inv(copy) &&
+    MutableMapModel.WFIter(copy, it) &&
+    (forall ref: uint64 {:trigger ref in t.contents} {:trigger ref in copy.contents} | ref in copy.contents :: 
+      ref in t.contents) &&
+    (forall ref: uint64 {:trigger copy.contents[ref]} {:trigger t.contents[ref]} {:trigger ref in copy.contents} | ref in copy.contents :: 
+      t.contents[ref].loc == copy.contents[ref].loc) &&
+    (forall ref: uint64 {:trigger copy.contents[ref]} {:trigger t.contents[ref]} {:trigger ref in copy.contents} | ref in copy.contents :: 
+      t.contents[ref].succs == copy.contents[ref].succs) &&
+    (forall ref: NativeTypes.uint64 {:trigger IsRoot(ref)} {:trigger PredecessorSetRestricted(Graph(copy), ref, it.s)} {:trigger t.contents[ref]} {:trigger ref in copy.contents} | ref in copy.contents :: 
+      t.contents[ref].predCount as int == |PredecessorSetRestricted(Graph(copy), ref, it.s)| + IsRoot(ref)) &&
+    (forall ref: uint64 {:trigger copy.contents[ref]} {:trigger ref in copy.contents} | ref in copy.contents :: 
+      |copy.contents[ref].succs| <= MaxNumChildren()) &&
+    (forall ref: uint64 {:trigger ref in copy.contents} {:trigger ref in t.contents} | ref in t.contents :: 
+      ref in copy.contents) &&
+    GraphClosedRestricted(Graph(copy), it.s) &&
+    t.count == copy.count &&
+    t.count as int <= MaxSize()
+  }
+  lemma LemmaPredecessorSetRestrictedPartialAdd1Self(graph: map<BT.G.Reference, seq<BT.G.Reference>>, dest: BT.G.Reference, domain: set<BT.G.Reference>, next: BT.G.Reference, j: int)
+    requires next in graph
+    requires 0 <= j < |graph[next]|
+    requires dest == graph[next][j]
+    requires next !in domain
+    ensures |PredecessorSetRestrictedPartial(graph, dest, domain, next, j + 1)| == |PredecessorSetRestrictedPartial(graph, dest, domain, next, j)| + 1
+    decreases graph, dest, domain, next, j
+  {
+    assert PredecessorSetRestrictedPartial(graph, dest, domain, next, j + 1) == PredecessorSetRestrictedPartial(graph, dest, domain, next, j) + {PredecessorEdge(next, j)};
+  }
+  lemma LemmaPredecessorSetRestrictedPartialAdd1Other(graph: map<BT.G.Reference, seq<BT.G.Reference>>, dest: BT.G.Reference, domain: set<BT.G.Reference>, next: BT.G.Reference, j: int)
+    requires next in graph
+    requires 0 <= j < |graph[next]|
+    requires dest != graph[next][j]
+    ensures |PredecessorSetRestrictedPartial(graph, dest, domain, next, j + 1)| == |PredecessorSetRestrictedPartial(graph, dest, domain, next, j)|
+    decreases graph, dest, domain, next, j
+  {
+    assert PredecessorSetRestrictedPartial(graph, dest, domain, next, j + 1) == PredecessorSetRestrictedPartial(graph, dest, domain, next, j);
+  }
+  lemma  LemmaComputeRefCountsEntryIterateCorrectPartial(t: HashMap, copy: HashMap, it: MutableMapModel.Iterator<Entry>, i: uint64)
+    requires it.next.Next?
+    requires MutableMapModel.Inv(t)
+    requires MutableMapModel.Inv(copy)
+    requires MutableMapModel.WFIter(copy, it)
+    requires forall ref: uint64 {:trigger ref in copy.contents} {:trigger ref in t.contents} | ref in t.contents :: ref in copy.contents
+    requires forall ref: uint64 {:trigger ref in t.contents} {:trigger ref in copy.contents} | ref in copy.contents :: ref in t.contents
+    requires forall ref: uint64 {:trigger copy.contents[ref]} {:trigger t.contents[ref]} {:trigger ref in copy.contents} | ref in copy.contents :: t.contents[ref].succs == copy.contents[ref].succs
+    requires forall ref: uint64 {:trigger copy.contents[ref]} {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents :: t.contents[ref].loc == copy.contents[ref].loc
+    requires t.count == copy.count
+    requires ComputeRefCountsEntryIterate.requires(t, copy.contents[it.next.key].succs, i)
+    requires forall ref: NativeTypes.uint64 {:trigger IsRoot(ref)} {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents :: t.contents[ref].predCount as int == |PredecessorSetRestrictedPartial(Graph(copy), ref, it.s, it.next.key, i as int)| + IsRoot(ref)
+    requires BT.G.Root() in t.contents
+    ensures var t': Option<HashMap> := ComputeRefCountsEntryIterate(t, copy.contents[it.next.key].succs, i); (t'.Some? ==> MutableMapModel.Inv(t'.value) && (forall ref: NativeTypes.uint64 {:trigger IsRoot(ref)} {:trigger t'.value.contents[ref]} {:trigger ref in t'.value.contents} | ref in t'.value.contents :: t'.value.contents[ref].predCount as int == |PredecessorSetRestricted(Graph(copy), ref, it.s + {it.next.key})| + IsRoot(ref)) && (forall ref: uint64 {:trigger ref in copy.contents} {:trigger ref in t'.value.contents} | ref in t'.value.contents :: ref in copy.contents) && (forall ref: uint64 {:trigger ref in t'.value.contents} {:trigger ref in copy.contents} | ref in copy.contents :: ref in t'.value.contents) && (forall ref: uint64 {:trigger copy.contents[ref]} {:trigger t'.value.contents[ref]} {:trigger ref in t'.value.contents} | ref in t'.value.contents :: t'.value.contents[ref].loc == copy.contents[ref].loc) && (forall ref: uint64 {:trigger copy.contents[ref]} {:trigger t'.value.contents[ref]} {:trigger ref in t'.value.contents} | ref in t'.value.contents :: t'.value.contents[ref].succs == copy.contents[ref].succs) && t'.value.count == copy.count && BT.G.Root() in t'.value.contents) && (t'.None? ==> !BC.GraphClosed(Graph(copy)))
+    decreases |copy.contents[it.next.key].succs| - i as int
+  {
+    ghost var succs: seq<BT.G.Reference> := copy.contents[it.next.key].succs;
+    if i == |succs| as uint64 {
+      forall ref: NativeTypes.uint64 {:trigger IsRoot(ref)} {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents
+        ensures t.contents[ref].predCount as int == |PredecessorSetRestricted(Graph(copy), ref, it.s + {it.next.key})| + IsRoot(ref)
+      {
+        assert PredecessorSetRestricted(Graph(copy), ref, it.s + {it.next.key}) == PredecessorSetRestrictedPartial(Graph(copy), ref, it.s, it.next.key, i as int);
+      }
+    } else {
+      ghost var ref: NativeTypes.uint64 := succs[i];
+      ghost var oldEntry: Option<Entry> := MutableMapModel.Get(t, ref);
+      if oldEntry.Some? {
+        ghost var newEntry: Entry := oldEntry.value.(predCount := oldEntry.value.predCount + 1);
+        ghost var t0: LinearHashMap<Entry> := MutableMapModel.Insert(t, ref, newEntry);
+        forall r: NativeTypes.uint64 {:trigger IsRoot(r)} {:trigger t0.contents[r]} {:trigger r in t0.contents} | r in t0.contents
+          ensures t0.contents[r].predCount as int == |PredecessorSetRestrictedPartial(Graph(copy), r, it.s, it.next.key, (i + 1) as int)| + IsRoot(r)
+        {
+          if r == ref {
+            LemmaPredecessorSetRestrictedPartialAdd1Self(Graph(copy), r, it.s, it.next.key, i as int);
+          } else {
+            LemmaPredecessorSetRestrictedPartialAdd1Other(Graph(copy), r, it.s, it.next.key, i as int);
+          }
+        }
+        LemmaComputeRefCountsEntryIterateCorrectPartial(t0, copy, it, i + 1);
+      } else {
+        assert ref in Graph(copy)[it.next.key];
+      }
+    }
+  }
+  lemma  LemmaComputeRefCountsEntryIterateGraphClosed(t: HashMap, copy: HashMap, it: MutableMapModel.Iterator<Entry>, i: uint64)
+    requires it.next.Next?
+    requires MutableMapModel.Inv(t)
+    requires MutableMapModel.Inv(copy)
+    requires MutableMapModel.WFIter(copy, it)
+    requires ComputeRefCountsEntryIterate.requires(t, copy.contents[it.next.key].succs, i)
+    requires forall ref: uint64 {:trigger ref in copy.contents} {:trigger ref in t.contents} | ref in t.contents :: ref in copy.contents
+    requires forall ref: uint64 {:trigger ref in t.contents} {:trigger ref in copy.contents} | ref in copy.contents :: ref in t.contents
+    requires forall ref: uint64 {:trigger copy.contents[ref]} {:trigger t.contents[ref]} {:trigger ref in copy.contents} | ref in copy.contents :: t.contents[ref].succs == copy.contents[ref].succs
+    requires GraphClosedRestrictedPartial(Graph(copy), it.s, it.next.key, i as int)
+    ensures var t': Option<HashMap> := ComputeRefCountsEntryIterate(t, copy.contents[it.next.key].succs, i); true && (t'.Some? ==> true && GraphClosedRestricted(Graph(copy), it.s + {it.next.key}))
+    decreases |copy.contents[it.next.key].succs| - i as int
+  {
+    ghost var succs: seq<BT.G.Reference> := copy.contents[it.next.key].succs;
+    if i == |succs| as uint64 {
+    } else {
+      ghost var ref: NativeTypes.uint64 := succs[i];
+      ghost var oldEntry: Option<Entry> := MutableMapModel.Get(t, ref);
+      if oldEntry.Some? {
+        ghost var newEntry: Entry := oldEntry.value.(predCount := oldEntry.value.predCount + 1);
+        ghost var t0: LinearHashMap<Entry> := MutableMapModel.Insert(t, ref, newEntry);
+        ghost var graph: map<uint64, seq<BT.G.Reference>> := Graph(t0);
+        forall k: uint64 {:trigger graph[it.next.key][k]} | 0 <= k < i + 1
+          ensures graph[it.next.key][k] in graph
+        {
+          if k == i {
+            assert graph[it.next.key][k] in graph;
+          } else {
+            assert Graph(copy)[it.next.key][k] in Graph(copy);
+            assert graph[it.next.key][k] in graph;
+          }
+        }
+        LemmaComputeRefCountsEntryIterateGraphClosed(t0, copy, it, i + 1);
+      } else {
+        assert ref in Graph(copy)[it.next.key];
+      }
+    }
+  }
+  lemma  LemmaComputeRefCountsEntryIterateCorrect(t: HashMap, copy: HashMap, it: MutableMapModel.Iterator<Entry>)
+    requires it.next.Next?
+    requires ComputeRefCountsIterateInv(t, copy, it)
+    requires ComputeRefCountsEntryIterate.requires(t, copy.contents[it.next.key].succs, 0)
+    requires forall ref: NativeTypes.uint64 {:trigger IsRoot(ref)} {:trigger PredecessorSetRestricted(Graph(copy), ref, it.s)} {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents :: t.contents[ref].predCount as int == |PredecessorSetRestricted(Graph(copy), ref, it.s)| + IsRoot(ref)
+    requires BT.G.Root() in t.contents
+    ensures var t': Option<HashMap> := ComputeRefCountsEntryIterate(t, copy.contents[it.next.key].succs, 0); (t'.Some? ==> MutableMapModel.Inv(t'.value) && (forall ref: NativeTypes.uint64 {:trigger IsRoot(ref)} {:trigger t'.value.contents[ref]} {:trigger ref in t'.value.contents} | ref in t'.value.contents :: t'.value.contents[ref].predCount as int == |PredecessorSetRestricted(Graph(copy), ref, it.s + {it.next.key})| + IsRoot(ref)) && (forall ref: uint64 {:trigger ref in copy.contents} {:trigger ref in t'.value.contents} | ref in t'.value.contents :: ref in copy.contents) && (forall ref: uint64 {:trigger ref in t'.value.contents} {:trigger ref in copy.contents} | ref in copy.contents :: ref in t'.value.contents) && (forall ref: uint64 {:trigger t.contents[ref]} {:trigger t'.value.contents[ref]} {:trigger ref in t'.value.contents} | ref in t'.value.contents :: t'.value.contents[ref].loc == t.contents[ref].loc) && (forall ref: uint64 {:trigger t.contents[ref]} {:trigger t'.value.contents[ref]} {:trigger ref in t'.value.contents} | ref in t'.value.contents :: t'.value.contents[ref].succs == t.contents[ref].succs) && t'.value.count == copy.count && GraphClosedRestricted(Graph(copy), it.s + {it.next.key})) && (t'.None? ==> !BC.GraphClosed(Graph(copy)))
+    decreases t, copy, it
+  {
+    forall ref: NativeTypes.uint64 {:trigger IsRoot(ref)} {:trigger PredecessorSetRestrictedPartial(Graph(copy), ref, it.s, it.next.key, 0)} {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents
+      ensures t.contents[ref].predCount as int == |PredecessorSetRestrictedPartial(Graph(copy), ref, it.s, it.next.key, 0)| + IsRoot(ref)
+    {
+      assert PredecessorSetRestrictedPartial(Graph(copy), ref, it.s, it.next.key, 0) == PredecessorSetRestricted(Graph(copy), ref, it.s);
+    }
+    LemmaComputeRefCountsEntryIterateCorrectPartial(t, copy, it, 0);
+    LemmaComputeRefCountsEntryIterateGraphClosed(t, copy, it, 0);
+  }
+  lemma  LemmaComputeRefCountsIterateStuff(t: HashMap, copy: HashMap, it: MutableMapModel.Iterator<Entry>)
+    requires ComputeRefCountsIterateInv(t, copy, it)
+    requires BT.G.Root() in t.contents
+    ensures forall ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents :: t.contents[ref].predCount as int <= 281474976710656
+    ensures it.next.Next? ==> var succs: seq<BT.G.Reference> := it.next.value.succs; var t0: Option<HashMap> := ComputeRefCountsEntryIterate(t, succs, 0); (t0.Some? ==> ComputeRefCountsIterateInv(t0.value, copy, MutableMapModel.IterInc(copy, it))) && (t0.None? ==> !BC.GraphClosed(Graph(copy)))
+    decreases t, copy, it
+  {
+    forall ref: NativeTypes.uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents
+      ensures t.contents[ref].predCount as int <= 281474976710656
+    {
+      lemma_count_eq_graph_size(copy);
+      PredecessorSetRestrictedSizeBound(Graph(copy), ref, it.s);
+    }
+    if it.next.Next? {
+      assert |copy.contents[it.next.key].succs| <= MaxNumChildren();
+      LemmaComputeRefCountsEntryIterateCorrect(t, copy, it);
+    }
+  }
+  lemma LemmaComputeRefCountsIterateValidPredCounts(t: HashMap, copy: HashMap, it: MutableMapModel.Iterator<Entry>)
+    requires ComputeRefCountsIterateInv(t, copy, it)
+    ensures it.next.Done? ==> ValidPredCounts(PredCounts(t), Graph(t))
+    decreases t, copy, it
+  {
+    if it.next.Done? {
+      ghost var predCounts: map<NativeTypes.uint64, int> := PredCounts(t);
+      ghost var graph: map<BT.G.Reference, seq<BT.G.Reference>> := Graph(t);
+      forall ref: NativeTypes.uint64 {:trigger IsRoot(ref)} {:trigger PredecessorSet(graph, ref)} {:trigger predCounts[ref]} {:trigger ref in predCounts} | ref in predCounts
+        ensures predCounts[ref] == |PredecessorSet(graph, ref)| + IsRoot(ref)
+      {
+        assert PredecessorSet(graph, ref) == PredecessorSetRestricted(Graph(copy), ref, it.s);
+      }
+    }
+  }
+  function ComputeRefCountsIterate(t: HashMap, copy: HashMap, it: MutableMapModel.Iterator<Entry>): (t': Option<HashMap>)
+    requires ComputeRefCountsIterateInv(t, copy, it)
+    requires BT.G.Root() in t.contents
+    ensures t'.Some? ==> MutableMapModel.Inv(t'.value)
+    ensures t'.Some? <==> BC.GraphClosed(Graph(copy))
+    ensures t'.Some? ==> Graph(copy) == Graph(t'.value)
+    ensures t'.Some? ==> Locs(copy) == Locs(t'.value)
+    ensures t'.Some? ==> ValidPredCounts(PredCounts(t'.value), Graph(t'.value))
+    ensures t'.Some? ==> BT.G.Root() in t'.value.contents
+    decreases it.decreaser
+  {
+    LemmaComputeRefCountsIterateStuff(t, copy, it);
+    LemmaComputeRefCountsIterateValidPredCounts(t, copy, it);
+    if it.next.Done? then
+      Some(t)
+    else
+      var succs: seq<BT.G.Reference> := it.next.value.succs; var t0: Option<HashMap> := ComputeRefCountsEntryIterate(t, succs, 0); if t0.Some? then ComputeRefCountsIterate(t0.value, copy, MutableMapModel.IterInc(copy, it)) else None
+  }
+  lemma LemmaComputeRefCountsIterateInvInit(t: HashMap)
+    requires MutableMapModel.Inv(t)
+    requires forall ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents :: t.contents[ref].predCount == 0
+    requires forall ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents :: |t.contents[ref].succs| <= MaxNumChildren()
+    requires t.count as int <= MaxSize()
+    requires BT.G.Root() in t.contents
+    ensures var oldEntry: Entry := t.contents[BT.G.Root()]; var t0: LinearHashMap<Entry> := MutableMapModel.Insert(t, BT.G.Root(), oldEntry.(predCount := 1)); ComputeRefCountsIterateInv(t0, t, MutableMapModel.IterStart(t))
+    decreases t
+  {
+    ghost var oldEntry: Entry := t.contents[BT.G.Root()];
+    ghost var t0: LinearHashMap<Entry> := MutableMapModel.Insert(t, BT.G.Root(), oldEntry.(predCount := 1));
+    ghost var it: Iterator<Entry> := MutableMapModel.IterStart(t);
+    forall ref: NativeTypes.uint64 {:trigger IsRoot(ref)} {:trigger PredecessorSetRestricted(Graph(t0), ref, it.s)} {:trigger t0.contents[ref]} {:trigger ref in t0.contents} | ref in t0.contents
+      ensures t0.contents[ref].predCount as int == |PredecessorSetRestricted(Graph(t0), ref, it.s)| + IsRoot(ref)
+    {
+      assert PredecessorSetRestricted(Graph(t0), ref, it.s) == {};
+    }
+  }
+  function ComputeRefCounts(t: HashMap): (t': Option<HashMap>)
+    requires MutableMapModel.Inv(t)
+    requires forall ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents :: t.contents[ref].predCount == 0
+    requires forall ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents :: |t.contents[ref].succs| <= MaxNumChildren()
+    requires t.count as int <= MaxSize()
+    requires BT.G.Root() in t.contents
+    ensures BC.GraphClosed(Graph(t)) <==> t'.Some?
+    ensures t'.Some? ==> Graph(t) == Graph(t'.value)
+    ensures t'.Some? ==> Locs(t) == Locs(t'.value)
+    ensures t'.Some? ==> ValidPredCounts(PredCounts(t'.value), Graph(t'.value))
+    ensures t'.Some? ==> BT.G.Root() in t'.value.contents
+    decreases t
+  {
+    LemmaComputeRefCountsIterateInvInit(t);
+    var oldEntry: Entry := t.contents[BT.G.Root()];
+    var t0: LinearHashMap<Entry> := MutableMapModel.Insert(t, BT.G.Root(), oldEntry.(predCount := 1));
+    ComputeRefCountsIterate(t0, t, MutableMapModel.IterStart(t))
+  }
+  function {:fuel ValInGrammar, 3} valToHashMap(a: seq<V>): (s: Option<HashMap>)
+    requires |a| <= MaxSize()
+    requires forall i: int {:trigger a[i]} | 0 <= i < |a| :: ValidVal(a[i])
+    requires forall i: int {:trigger a[i]} | 0 <= i < |a| :: ValInGrammar(a[i], GTuple([GUint64, GUint64, GUint64, GUint64Array]))
+    ensures s.Some? ==> s.value.count as int == |a|
+    ensures s.Some? ==> forall v: Entry {:trigger v.loc} {:trigger v in s.value.contents.Values} | v in s.value.contents.Values :: v.loc.Some? && ValidNodeLocation(v.loc.value)
+    ensures s.Some? ==> forall ref: uint64 {:trigger s.value.contents[ref]} {:trigger ref in s.value.contents} | ref in s.value.contents :: s.value.contents[ref].predCount == 0
+    ensures s.Some? ==> forall ref: uint64 {:trigger s.value.contents[ref]} {:trigger ref in s.value.contents} | ref in s.value.contents :: |s.value.contents[ref].succs| <= MaxNumChildren()
+    ensures s.Some? ==> Marshalling.valToIndirectionTableMaps(a) == Some(IHashMap(s.value))
+    ensures s.None? ==> Marshalling.valToIndirectionTableMaps(a).None?
+    decreases a
+  {
+    if |a| == 0 then
+      var s: Option<LinearHashMap<Entry>> := Some(MutableMapModel.Constructor(1024));
+      assert Locs(s.value) == map[];
+      assert Graph(s.value) == map[];
+      s
+    else
+      var res: Option<HashMap> := valToHashMap(DropLast(a)); match res { case None => None case Some(_mcc#0: MutableMapModel.LinearHashMap<Entry>) => var table: LinearHashMap<Entry> := _mcc#0; var tuple: V := Last(a); var ref: uint64 := tuple.t[0].u; var lba: uint64 := tuple.t[1].u; var len: uint64 := tuple.t[2].u; var succs: seq<uint64> := tuple.t[3].ua; var loc: Location := Location(lba, len); if ref in table.contents || !ValidNodeLocation(loc) || |succs| as int > MaxNumChildren() then None else var res: LinearHashMap<Entry> := MutableMapModel.Insert(table, ref, Entry(Some(loc), succs, 0)); assert Locs(res) == Locs(table)[ref := loc]; assert Graph(res) == Graph(table)[ref := succs]; Some(res) }
+  }
+  function method IndirectionTableGrammar(): G
+    ensures ValidGrammar(IndirectionTableGrammar())
+  {
+    GArray(GTuple([GUint64, GUint64, GUint64, GUint64Array]))
+  }
+  function makeGarbageQueueIterate(t: HashMap, q: LruModel.LruQueue, it: MutableMapModel.Iterator<Entry>): LruModel.LruQueue
+    requires MutableMapModel.Inv(t)
+    requires MutableMapModel.WFIter(t, it)
+    requires LruModel.WF(q)
+    decreases it.decreaser
+  {
+    if it.next.Done? then
+      q
+    else
+      var q': LruQueue := if it.next.value.predCount == 0 then LruModel.LruUse(q, it.next.key); LruModel.Use(q, it.next.key) else q; var it': Iterator<Entry> := MutableMapModel.IterInc(t, it); makeGarbageQueueIterate(t, q', it')
+  }
+  function {:opaque} {:fuel 0, 0} makeGarbageQueue(t: HashMap): LruModel.LruQueue
+    requires MutableMapModel.Inv(t)
+    decreases t
+  {
+    makeGarbageQueueIterate(t, LruModel.Empty(), MutableMapModel.IterStart(t))
+  }
+  lemma  makeGarbageQueueIterateCorrect(t: HashMap, q: LruModel.LruQueue, it: MutableMapModel.Iterator<Entry>)
+    requires MutableMapModel.Inv(t)
+    requires MutableMapModel.WFIter(t, it)
+    requires LruModel.WF(q)
+    requires forall ref: uint64 {:trigger ref in LruModel.I(q)} {:trigger ref in it.s} {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents && t.contents[ref].predCount == 0 && ref in it.s :: ref in LruModel.I(q)
+    requires forall ref: uint64 {:trigger ref in it.s} {:trigger t.contents[ref]} {:trigger ref in t.contents} {:trigger ref in LruModel.I(q)} | ref in LruModel.I(q) :: ref in t.contents && t.contents[ref].predCount == 0 && ref in it.s
+    ensures var q': LruModel.LruQueue := makeGarbageQueueIterate(t, q, it); LruModel.WF(q') && (forall ref: uint64 {:trigger ref in LruModel.I(q')} {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents && t.contents[ref].predCount == 0 :: ref in LruModel.I(q')) && forall ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} {:trigger ref in LruModel.I(q')} | ref in LruModel.I(q') :: ref in t.contents && t.contents[ref].predCount == 0
+    decreases it.decreaser
+  {
+    if it.next.Done? {
+    } else {
+      ghost var q': LruQueue := if it.next.value.predCount == 0 then LruModel.LruUse(q, it.next.key); LruModel.Use(q, it.next.key) else q;
+      ghost var it': Iterator<Entry> := MutableMapModel.IterInc(t, it);
+      makeGarbageQueueIterateCorrect(t, q', it');
+    }
+  }
+  lemma lemmaMakeGarbageQueueCorrect(t: HashMap)
+    requires MutableMapModel.Inv(t)
+    ensures var q: LruModel.LruQueue := makeGarbageQueue(t); LruModel.WF(q) && (forall ref: uint64 {:trigger ref in LruModel.I(q)} {:trigger t.contents[ref]} {:trigger ref in t.contents} | ref in t.contents && t.contents[ref].predCount == 0 :: ref in LruModel.I(q)) && forall ref: uint64 {:trigger t.contents[ref]} {:trigger ref in t.contents} {:trigger ref in LruModel.I(q)} | ref in LruModel.I(q) :: ref in t.contents && t.contents[ref].predCount == 0
+    decreases t
+  {
+    reveal_makeGarbageQueue();
+    makeGarbageQueueIterateCorrect(t, LruModel.Empty(), MutableMapModel.IterStart(t));
+  }
+  function computeRefUpperBoundIterate(t: HashMap, it: MutableMapModel.Iterator<Entry>, refUpperBound: uint64): (r: uint64)
+    requires MutableMapModel.Inv(t)
+    requires MutableMapModel.WFIter(t, it)
+    requires forall ref: uint64 {:trigger ref in it.s} | ref in it.s :: ref <= refUpperBound
+    ensures forall ref: uint64 {:trigger ref in t.contents} | ref in t.contents :: ref <= r
+    decreases it.decreaser
+  {
+    if it.next.Next? then
+      computeRefUpperBoundIterate(t, MutableMapModel.IterInc(t, it), if it.next.key > refUpperBound then it.next.key else refUpperBound)
+    else
+      refUpperBound
+  }
+  function computeRefUpperBound(t: HashMap): (r: uint64)
+    requires MutableMapModel.Inv(t)
+    ensures forall ref: uint64 {:trigger ref in t.contents} | ref in t.contents :: ref <= r
+    decreases t
+  {
+    computeRefUpperBoundIterate(t, MutableMapModel.IterStart(t), 0)
+  }
+  function valToIndirectionTable(v: V): (s: Option<IndirectionTable>)
+    requires ValidVal(v)
+    requires ValInGrammar(v, IndirectionTableGrammar())
+    ensures s.Some? ==> Inv(s.value)
+    ensures s.Some? ==> TrackingGarbage(s.value)
+    ensures s.Some? ==> BC.WFCompleteIndirectionTable(I(s.value))
+    ensures s.Some? ==> Marshalling.valToIndirectionTable(v) == Some(I(s.value))
+    ensures s.None? ==> Marshalling.valToIndirectionTable(v).None?
+    decreases v
+  {
+    if |v.a| <= MaxSize() then
+      var t: Option<HashMap> := valToHashMap(v.a);
+      match t {
+        case Some(t) =>
+          if BT.G.Root() in t.contents then
+            var t1 := ComputeRefCounts(t);
+            if t1.Some? then
+              lemmaMakeGarbageQueueCorrect(t1.value);
+              lemma_count_eq_graph_size(t);
+              lemma_count_eq_graph_size(t1.value);
+              var refUpperBound := computeRefUpperBound(t1.value);
+              var res := FromHashMap(t1.value, Some(makeGarbageQueue(t1.value)), refUpperBound, None);
+              Some(res)
+            else
+              None
+          else
+            None
+        case None =>
+          None
+      }
+    else
+      None
+  }
+  predicate IsLocAllocIndirectionTable(indirectionTable: IndirectionTable, i: int)
+    decreases indirectionTable, i
+  {
+    0 <= i < MinNodeBlockIndex() || !forall ref: NativeTypes.uint64 {:trigger indirectionTable.locs[ref]} {:trigger ref in indirectionTable.locs} | ref in indirectionTable.locs :: indirectionTable.locs[ref].addr as int != i * NodeBlockSize() as int
+  }
+  predicate IsLocAllocBitmap(bm: BitmapModel.BitmapModelT, i: int)
+    decreases bm, i
+  {
+    0 <= i < BitmapModel.Len(bm) &&
+    BitmapModel.IsSet(bm, i)
+  }
+  function BitmapInitUpToIterate(bm: BitmapModel.BitmapModelT, i: uint64, upTo: uint64): (res: BitmapModel.BitmapModelT)
+    requires 0 <= i as int <= upTo as int <= BitmapModel.Len(bm)
+    ensures BitmapModel.Len(res) == BitmapModel.Len(bm)
+    decreases upTo - i
+  {
+    if i == upTo then
+      bm
+    else
+      BitmapInitUpToIterate(BitmapModel.BitSet(bm, i as int), i + 1, upTo)
+  }
+  function {:opaque} {:fuel 0, 0} BitmapInitUpTo(bm: BitmapModel.BitmapModelT, upTo: uint64): (res: BitmapModel.BitmapModelT)
+    requires upTo as int <= BitmapModel.Len(bm)
+    ensures BitmapModel.Len(res) == BitmapModel.Len(bm)
+    decreases bm, upTo
+  {
+    BitmapInitUpToIterate(bm, 0, upTo)
+  }
+  function InitLocBitmapIterate(indirectionTable: IndirectionTable, it: MutableMapModel.Iterator<Entry>, bm: BitmapModel.BitmapModelT): (res: (bool, BitmapModel.BitmapModelT))
+    requires Inv(indirectionTable)
+    requires MutableMapModel.WFIter(indirectionTable.t, it)
+    requires BC.WFCompleteIndirectionTable(I(indirectionTable))
+    requires BitmapModel.Len(bm) == NumBlocks()
+    ensures BitmapModel.Len(res.1) == NumBlocks()
+    decreases it.decreaser
+  {
+    if it.next.Done? then
+      (true, bm)
+    else
+      assert it.next.key in I(indirectionTable).locs; var loc: uint64 := it.next.value.loc.value.addr; var locIndex: uint64 := loc / NodeBlockSize() as uint64; if locIndex < NumBlocks() as uint64 && !BitmapModel.IsSet(bm, locIndex as int) then InitLocBitmapIterate(indirectionTable, MutableMapModel.IterInc(indirectionTable.t, it), BitmapModel.BitSet(bm, locIndex as int)) else (false, bm)
+  }
+  function {:opaque} {:fuel 0, 0} InitLocBitmap(indirectionTable: IndirectionTable): (res: (bool, BitmapModel.BitmapModelT))
+    requires Inv(indirectionTable)
+    requires BC.WFCompleteIndirectionTable(I(indirectionTable))
+    ensures BitmapModel.Len(res.1) == NumBlocks()
+    decreases indirectionTable
+  {
+    var bm: BitmapModelT := BitmapModel.EmptyBitmap(NumBlocks());
+    var bm': BitmapModel.BitmapModelT := BitmapInitUpTo(bm, MinNodeBlockIndexUint64());
+    InitLocBitmapIterate(indirectionTable, MutableMapModel.IterStart(indirectionTable.t), bm')
+  }
+  predicate IsLocAllocIndirectionTablePartial(indirectionTable: IndirectionTable, i: int, s: set<uint64>)
+    decreases indirectionTable, i, s
+  {
+    0 <= i < MinNodeBlockIndex() || !forall ref: NativeTypes.uint64 {:trigger indirectionTable.locs[ref]} {:trigger ref in s} {:trigger ref in indirectionTable.locs} | ref in indirectionTable.locs && ref in s :: indirectionTable.locs[ref].addr as int != i * NodeBlockSize() as int
+  }
+  lemma  InitLocBitmapIterateCorrect(indirectionTable: IndirectionTable, it: MutableMapModel.Iterator<Entry>, bm: BitmapModel.BitmapModelT)
+    requires Inv(indirectionTable)
+    requires InitLocBitmapIterate.requires(indirectionTable, it, bm)
+    requires forall i: int {:trigger IsLocAllocBitmap(bm, i)} {:trigger IsLocAllocIndirectionTablePartial(indirectionTable, i, it.s)} :: IsLocAllocIndirectionTablePartial(indirectionTable, i, it.s) <==> IsLocAllocBitmap(bm, i)
+    requires forall r1: NativeTypes.uint64, r2: NativeTypes.uint64 {:trigger LocationsForDifferentRefsDontOverlap(I(indirectionTable), r1, r2)} {:trigger r2 in it.s, r1 in it.s} {:trigger r2 in it.s, r1 in I(indirectionTable).locs} {:trigger r1 in it.s, r2 in I(indirectionTable).locs} {:trigger r2 in I(indirectionTable).locs, r1 in I(indirectionTable).locs} | r1 in I(indirectionTable).locs && r2 in I(indirectionTable).locs :: r1 in it.s && r2 in it.s ==> LocationsForDifferentRefsDontOverlap(I(indirectionTable), r1, r2)
+    ensures var (succ: bool, bm': BitmapModel.BitmapModelT) := InitLocBitmapIterate(indirectionTable, it, bm); succ ==> (forall i: int {:trigger IsLocAllocBitmap(bm', i)} {:trigger IsLocAllocIndirectionTable(indirectionTable, i)} :: IsLocAllocIndirectionTable(indirectionTable, i) <==> IsLocAllocBitmap(bm', i)) && BC.AllLocationsForDifferentRefsDontOverlap(I(indirectionTable))
+    decreases it.decreaser
+  {
+    BitmapModel.reveal_BitSet();
+    BitmapModel.reveal_IsSet();
+    var (succ: bool, bm': BitmapModel.BitmapModelT) := InitLocBitmapIterate(indirectionTable, it, bm);
+    if it.next.Done? {
+      forall i: int {:trigger IsLocAllocBitmap(bm', i)} {:trigger IsLocAllocIndirectionTable(indirectionTable, i)} | IsLocAllocIndirectionTable(indirectionTable, i)
+        ensures IsLocAllocBitmap(bm', i)
+      {
+      }
+      forall i: int {:trigger IsLocAllocIndirectionTable(indirectionTable, i)} {:trigger IsLocAllocBitmap(bm', i)} | IsLocAllocBitmap(bm', i)
+        ensures IsLocAllocIndirectionTable(indirectionTable, i)
+      {
+      }
+    } else {
+      if succ {
+        assert it.next.key in indirectionTable.locs;
+        ghost var loc: uint64 := it.next.value.loc.value.addr;
+        ghost var locIndex: uint64 := loc / NodeBlockSize() as uint64;
+        reveal_ValidNodeAddr();
+        assert ValidNodeLocation(it.next.value.loc.value);
+        assert locIndex as int * NodeBlockSize() == loc as int;
+        ghost var bm0: BitmapModelT := BitmapModel.BitSet(bm, locIndex as int);
+        ghost var it0: Iterator<Entry> := MutableMapModel.IterInc(indirectionTable.t, it);
+        forall i: int {:trigger IsLocAllocBitmap(bm0, i)} {:trigger IsLocAllocIndirectionTablePartial(indirectionTable, i, it0.s)} | IsLocAllocIndirectionTablePartial(indirectionTable, i, it0.s)
+          ensures IsLocAllocBitmap(bm0, i)
+        {
+          if IsLocAllocIndirectionTablePartial(indirectionTable, i, it.s) {
+          }
+        }
+        forall i: int {:trigger IsLocAllocIndirectionTablePartial(indirectionTable, i, it0.s)} {:trigger IsLocAllocBitmap(bm0, i)} | IsLocAllocBitmap(bm0, i)
+          ensures IsLocAllocIndirectionTablePartial(indirectionTable, i, it0.s)
+        {
+          if IsLocAllocBitmap(bm, i) {
+          }
+          if IsLocAllocIndirectionTablePartial(indirectionTable, i, it.s) {
+          }
+          if i == locIndex as int {
+            ghost var ref: uint64 := it.next.key;
+            assert indirectionTable.t.contents[ref].loc.Some?;
+            assert ref in it0.s;
+            assert indirectionTable.t.contents[ref] == it.next.value;
+            assert indirectionTable.t.contents[ref].loc.value.addr as int == i * NodeBlockSize() as int;
+            assert IsLocAllocIndirectionTablePartial(indirectionTable, i, it0.s);
+          } else {
+            assert IsLocAllocIndirectionTablePartial(indirectionTable, i, it0.s);
+          }
+        }
+        forall r1: NativeTypes.uint64, r2: NativeTypes.uint64 {:trigger LocationsForDifferentRefsDontOverlap(I(indirectionTable), r1, r2)} {:trigger r2 in it0.s, r1 in it0.s} {:trigger r2 in it0.s, r1 in I(indirectionTable).locs} {:trigger r1 in it0.s, r2 in I(indirectionTable).locs} {:trigger r2 in I(indirectionTable).locs, r1 in I(indirectionTable).locs} | r1 in I(indirectionTable).locs && r2 in I(indirectionTable).locs && r1 in it0.s && r2 in it0.s
+          ensures LocationsForDifferentRefsDontOverlap(I(indirectionTable), r1, r2)
+        {
+          if r1 != r2 {
+            if r1 in it.s && r2 in it.s {
+              assert BC.LocationsForDifferentRefsDontOverlap(I(indirectionTable), r1, r2);
+            } else {
+              if I(indirectionTable).locs[r1].addr == I(indirectionTable).locs[r2].addr {
+                ghost var j1: int := DiskLayout.ValidNodeAddrDivisor(I(indirectionTable).locs[r1].addr);
+                ghost var j2: int := DiskLayout.ValidNodeAddrDivisor(I(indirectionTable).locs[r2].addr);
+                if r1 !in it.s {
+                  assert r2 in it.s;
+                  assert !BitmapModel.IsSet(bm, j1);
+                  assert IsLocAllocBitmap(bm, j2);
+                  assert BitmapModel.IsSet(bm, j2);
+                  assert false;
+                } else {
+                  assert r1 in it.s;
+                  assert !BitmapModel.IsSet(bm, j2);
+                  assert IsLocAllocBitmap(bm, j1);
+                  assert BitmapModel.IsSet(bm, j1);
+                  assert false;
+                }
+              } else {
+                assert BC.LocationsForDifferentRefsDontOverlap(I(indirectionTable), r1, r2);
+              }
+            }
+          }
+        }
+        InitLocBitmapIterateCorrect(indirectionTable, it0, bm0);
+        assert (succ, bm') == InitLocBitmapIterate(indirectionTable, it0, bm0);
+      }
+    }
+  }
+  lemma  BitmapInitUpToIterateResult(bm: BitmapModel.BitmapModelT, i: uint64, upTo: uint64, j: uint64)
+    requires 0 <= i as int <= upTo as int <= BitmapModel.Len(bm)
+    requires 0 <= j as int < BitmapModel.Len(bm)
+    ensures var bm': BitmapModel.BitmapModelT := BitmapInitUpToIterate(bm, i, upTo); BitmapModel.Len(bm') == BitmapModel.Len(bm) && (i <= j < upTo ==> BitmapModel.IsSet(bm', j as int)) && (!(i <= j < upTo) ==> BitmapModel.IsSet(bm', j as int) == BitmapModel.IsSet(bm, j as int))
+    decreases upTo - i
+  {
+    BitmapModel.reveal_BitSet();
+    BitmapModel.reveal_IsSet();
+    if i == upTo {
+    } else {
+      BitmapInitUpToIterateResult(BitmapModel.BitSet(bm, i as int), i + 1, upTo, j);
+    }
+  }
+  lemma BitmapInitUpToResult(bm: BitmapModel.BitmapModelT, upTo: uint64, j: uint64)
+    requires upTo as int <= BitmapModel.Len(bm)
+    requires 0 <= j as int < BitmapModel.Len(bm)
+    ensures var bm': BitmapModel.BitmapModelT := BitmapInitUpTo(bm, upTo); BitmapModel.Len(bm') == BitmapModel.Len(bm) && (j < upTo ==> BitmapModel.IsSet(bm', j as int)) && (j >= upTo ==> BitmapModel.IsSet(bm', j as int) == BitmapModel.IsSet(bm, j as int))
+    decreases bm, upTo, j
+  {
+    reveal_BitmapInitUpTo();
+    BitmapInitUpToIterateResult(bm, 0, upTo, j);
+  }
+  lemma InitLocBitmapCorrect(indirectionTable: IndirectionTable)
+    requires Inv(indirectionTable)
+    requires BC.WFCompleteIndirectionTable(I(indirectionTable))
+    ensures var (succ: bool, bm: BitmapModel.BitmapModelT) := InitLocBitmap(indirectionTable); succ ==> (forall i: int {:trigger IsLocAllocBitmap(bm, i)} {:trigger IsLocAllocIndirectionTable(indirectionTable, i)} :: IsLocAllocIndirectionTable(indirectionTable, i) <==> IsLocAllocBitmap(bm, i)) && BC.AllLocationsForDifferentRefsDontOverlap(I(indirectionTable))
+    decreases indirectionTable
+  {
+    reveal_InitLocBitmap();
+    BitmapModel.reveal_BitSet();
+    BitmapModel.reveal_IsSet();
+    ghost var it: Iterator<Entry> := MutableMapModel.IterStart(indirectionTable.t);
+    ghost var bm: BitmapModelT := BitmapModel.EmptyBitmap(NumBlocks());
+    ghost var bm': BitmapModel.BitmapModelT := BitmapInitUpTo(bm, MinNodeBlockIndexUint64());
+    forall i: int {:trigger IsLocAllocBitmap(bm', i)} {:trigger IsLocAllocIndirectionTablePartial(indirectionTable, i, it.s)} | IsLocAllocIndirectionTablePartial(indirectionTable, i, it.s)
+      ensures IsLocAllocBitmap(bm', i)
+    {
+      BitmapInitUpToResult(bm, MinNodeBlockIndexUint64(), i as uint64);
+      assert i < MinNodeBlockIndex();
+      assert BitmapModel.IsSet(bm', i);
+    }
+    forall i: int {:trigger IsLocAllocIndirectionTablePartial(indirectionTable, i, it.s)} {:trigger IsLocAllocBitmap(bm', i)} | IsLocAllocBitmap(bm', i)
+      ensures IsLocAllocIndirectionTablePartial(indirectionTable, i, it.s)
+    {
+      BitmapInitUpToResult(bm, MinNodeBlockIndexUint64(), i as uint64);
+      assert i < MinNodeBlockIndex();
+    }
+    InitLocBitmapIterateCorrect(indirectionTable, it, bm');
+  }
+  predicate deallocable(self: IndirectionTable, ref: BT.G.Reference)
+    decreases self, ref
+  {
+    ref in I(self).graph &&
+    ref != BT.G.Root() &&
+    forall r: NativeTypes.uint64 {:trigger I(self).graph[r]} {:trigger r in I(self).graph} | r in I(self).graph :: 
+      ref !in I(self).graph[r]
+  }
+  function {:opaque} {:fuel 0, 0} FindDeallocable(self: IndirectionTable): (ref: Option<BT.G.Reference>)
+    requires Inv(self)
+    requires TrackingGarbage(self)
+    decreases self
+  {
+    LruModel.NextOpt(self.garbageQueue.value)
+  }
+  lemma FindDeallocableCorrect(self: IndirectionTable)
+    requires Inv(self)
+    requires TrackingGarbage(self)
+    ensures var ref: Option<BT.G.Reference> := FindDeallocable(self); (ref.Some? ==> ref.value in I(self).graph) && (ref.Some? ==> deallocable(self, ref.value)) && (ref.None? ==> forall r: NativeTypes.uint64 {:trigger deallocable(self, r)} {:trigger r in I(self).graph} | r in I(self).graph :: !deallocable(self, r))
+    decreases self
+  {
+    reveal_FindDeallocable();
+    ghost var ref: Option<BT.G.Reference> := FindDeallocable(self);
+    if ref.None? {
+      forall r: NativeTypes.uint64 {:trigger deallocable(self, r)} {:trigger r in I(self).graph} | r in I(self).graph
+        ensures !deallocable(self, r)
+      {
+        assert self.t.contents[r].predCount != 0;
+        if r == BT.G.Root() {
+          assert !deallocable(self, r);
+        } else {
+          assert |PredecessorSet(self.graph, r)| > 0;
+          assert PredecessorSet(self.graph, r) != {};
+          ghost var y: PredecessorEdge :| y in PredecessorSet(self.graph, r);
+          assert y.src in I(self).graph;
+          assert r in I(self).graph[y.src];
+          assert !deallocable(self, r);
+        }
+      }
+    } else {
+      assert ref.value in PredCounts(self.t);
+      assert self.predCounts[ref.value] == |PredecessorSet(self.graph, ref.value)| + IsRoot(ref.value);
+      assert self.t.contents[ref.value].predCount == 0;
+      forall r: NativeTypes.uint64 {:trigger I(self).graph[r]} {:trigger r in I(self).graph} | r in I(self).graph
+        ensures ref.value !in I(self).graph[r]
+      {
+        if ref.value in I(self).graph[r] {
+          ghost var i: int :| 0 <= i < |I(self).graph[r]| && I(self).graph[r][i] == ref.value;
+          assert PredecessorEdge(r, i) in PredecessorSet(self.graph, ref.value);
+        }
+      }
+    }
+  }
+  lemma  LemmaRemoveRefStuff(self: IndirectionTable, ref: BT.G.Reference)
+    requires Inv(self)
+    requires TrackingGarbage(self)
+    requires ref in self.t.contents
+    requires deallocable(self, ref)
+    requires self.t.count as nat < 18446744073709551616 / 8 - 1
+    ensures var (t: LinearHashMap<Entry>, oldEntry: Option<Entry>) := MutableMapModel.RemoveAndGet(self.t, ref); var q: LruQueue := LruModel.Remove(self.garbageQueue.value, ref); RefcountUpdateInv(t, q, ref, [], oldEntry.value.succs, 0, 0)
+    decreases self, ref
+  {
+    var (t: LinearHashMap<Entry>, oldEntry: Option<Entry>) := MutableMapModel.RemoveAndGet(self.t, ref);
+    LruModel.LruRemove(self.garbageQueue.value, ref);
+    assert |Graph(self.t)[ref]| <= MaxNumChildren();
+    forall ref: NativeTypes.uint64 {:trigger Graph(t)[ref]} {:trigger ref in Graph(t)} | ref in Graph(t)
+      ensures |Graph(t)[ref]| <= MaxNumChildren()
+    {
+      assert Graph(t)[ref] == Graph(self.t)[ref];
+    }
+    ghost var graph0: map<BT.G.Reference, seq<BT.G.Reference>> := Graph(self.t);
+    ghost var graph1: map<BT.G.Reference, seq<BT.G.Reference>> := Graph(t);
+    ghost var succs0: seq<BT.G.Reference> := Graph(self.t)[ref];
+    ghost var succs1: seq<NativeTypes.uint64> := [];
+    ghost var predCounts1: map<NativeTypes.uint64, int> := PredCounts(t);
+    forall r: NativeTypes.uint64 {:trigger SeqCount(succs0, r, 0)} {:trigger SeqCount(succs1, r, 0)} {:trigger IsRoot(r)} {:trigger PredecessorSet(graph1, r)} {:trigger predCounts1[r]} {:trigger r in predCounts1} | r in predCounts1
+      ensures predCounts1[r] == |PredecessorSet(graph1, r)| + IsRoot(r) - SeqCount(succs1, r, 0) + SeqCount(succs0, r, 0)
+    {
+      SeqCountPlusPredecessorSetExcept(graph0, r, ref);
+      SeqCountPlusPredecessorSetExcept(graph1, r, ref);
+      assert PredecessorSetExcept(graph0, r, ref) == PredecessorSetExcept(graph1, r, ref);
+    }
+    assert ValidPredCountsIntermediate(PredCounts(t), Graph(t), [], succs0, 0, 0);
+    forall j: int {:trigger succs0[j]} | 0 <= j < |succs0|
+      ensures succs0[j] in t.contents
+    {
+      if succs0[j] == ref {
+        assert ref in I(self).graph[ref];
+        assert false;
+      }
+      assert succs0[j] == self.t.contents[ref].succs[j];
+      assert succs0[j] in self.t.contents[ref].succs;
+      assert succs0[j] in self.t.contents;
+    }
+    forall r: NativeTypes.uint64, succ: NativeTypes.uint64 {:trigger succ in Graph(t), Graph(t)[r]} {:trigger succ in Graph(t), r in Graph(t)} | r in Graph(t) && succ in Graph(t)[r]
+      ensures succ in Graph(t)
+    {
+      if succ == ref {
+        assert ref in I(self).graph[r];
+        assert false;
+      }
+      assert succ in Graph(self.t)[r];
+      assert succ in Graph(self.t);
+    }
+  }
+  function {:opaque} {:fuel 0, 0} RemoveRef(self: IndirectionTable, ref: BT.G.Reference): (res: (IndirectionTable, Option<Location>))
+    requires Inv(self)
+    requires TrackingGarbage(self)
+    requires deallocable(self, ref)
+    ensures var (self': IndirectionTable, oldLoc: Option<Location>) := res; Inv(self') && TrackingGarbage(self') && self'.graph == MapRemove1(self.graph, ref) && self'.locs == MapRemove1(self.locs, ref) && (ref in self.locs ==> oldLoc == Some(self.locs[ref])) && (ref !in self.locs ==> oldLoc == None)
+    decreases self, ref
+  {
+    lemma_count_eq_graph_size(self.t);
+    LemmaRemoveRefStuff(self, ref);
+    var (t: LinearHashMap<Entry>, oldEntry: Option<Entry>) := MutableMapModel.RemoveAndGet(self.t, ref);
+    var q: LruQueue := LruModel.Remove(self.garbageQueue.value, ref);
+    var (t1: HashMap, q1: LruModel.LruQueue) := UpdatePredCountsInc(t, q, ref, [], oldEntry.value.succs, 0);
+    lemma_count_eq_graph_size(t);
+    lemma_count_eq_graph_size(t1);
+    LemmaValidPredCountsOfValidPredCountsIntermediate(PredCounts(t1), Graph(t1), [], oldEntry.value.succs);
+    var self': IndirectionTable := FromHashMap(t1, Some(q1), self.refUpperBound, None);
+    var oldLoc: Option<Location> := if oldEntry.Some? then oldEntry.value.loc else None;
+    assert self'.graph == MapRemove1(self.graph, ref);
+    (self', oldLoc)
+  }
+  function {:opaque} {:fuel 0, 0} clone(self: IndirectionTable): (self': IndirectionTable)
+    requires Inv(self)
+    ensures Inv(self')
+    ensures self'.graph == self.graph
+    ensures self'.locs == self.locs
+    decreases self
+  {
+    FromHashMap(self.t, None, self.refUpperBound, None)
+  }
+  function FindRefWithNoLocIterate(self: IndirectionTable, it: MutableMapModel.SimpleIterator): (res: (IndirectionTable, Option<BT.G.Reference>))
+    requires Inv(self)
+    requires MutableMapModel.WFSimpleIter(self.t, it)
+    requires forall r: uint64 {:trigger r in self.locs} {:trigger r in it.s} | r in it.s :: r in self.locs
+    ensures var (self': IndirectionTable, ref: Option<BT.G.Reference>) := res; Inv(self') && self'.locs == self.locs && self'.graph == self.graph && (ref.Some? ==> ref.value in self.graph) && (ref.Some? ==> ref.value !in self.locs) && (ref.None? ==> forall r: NativeTypes.uint64 {:trigger r in self.locs} {:trigger r in it.s} {:trigger r in self.graph} | r in self.graph && r !in it.s :: r in self.locs)
+    decreases it.decreaser
+  {
+    var next: IteratorOutput<Entry> := MutableMapModel.SimpleIterOutput(self.t, it);
+    if next.Next? then
+      if next.value.loc.None? then
+        var self': IndirectionTable := self.(findLoclessIterator := Some(it));
+        (self', Some(next.key))
+      else
+        FindRefWithNoLocIterate(self, MutableMapModel.SimpleIterInc(self.t, it))
+    else
+      var self': IndirectionTable := self.(findLoclessIterator := Some(it)); (self', None)
+  }
+  function {:opaque} {:fuel 0, 0} FindRefWithNoLoc(self: IndirectionTable): (res: (IndirectionTable, Option<BT.G.Reference>))
+    requires Inv(self)
+    ensures var (self': IndirectionTable, ref: Option<BT.G.Reference>) := res; Inv(self') && self'.locs == self.locs && self'.graph == self.graph && (ref.Some? ==> ref.value in self.graph) && (ref.Some? ==> ref.value !in self.locs) && (ref.None? ==> forall r: NativeTypes.uint64 {:trigger r in self.locs} {:trigger r in self.graph} | r in self.graph :: r in self.locs)
+    decreases self
+  {
+    var it: MutableMapModel.SimpleIterator := if self.findLoclessIterator.Some? then self.findLoclessIterator.value else MutableMapModel.SimpleIterStart(self.t);
+    FindRefWithNoLocIterate(self, it)
+  }
+  function {:opaque} {:fuel 0, 0} ConstructorRootOnly(loc: Location): (self': IndirectionTable)
+    ensures Inv(self')
+    ensures self'.graph == map[BT.G.Root() := []]
+    ensures self'.locs == map[BT.G.Root() := loc]
+    decreases loc
+  {
+    var t0: LinearHashMap<Entry> := MutableMapModel.Constructor(128);
+    var t1: LinearHashMap<Entry> := MutableMapModel.Insert(t0, BT.G.Root(), Entry(Some(loc), [], 1));
+    var self': IndirectionTable := FromHashMap(t1, None, BT.G.Root(), None);
+    self'
+  }
+  function {:opaque} {:fuel 0, 0} getRefUpperBound(self: IndirectionTable): (r: uint64)
+    requires Inv(self)
+    ensures forall ref: uint64 {:trigger ref in self.graph} | ref in self.graph :: ref <= r
+    decreases self
+  {
+    self.refUpperBound
+  }
+}

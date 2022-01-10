@@ -1,0 +1,2 @@
+  var Length: int  // immutable
+Dafny program verifier did not attempt verification

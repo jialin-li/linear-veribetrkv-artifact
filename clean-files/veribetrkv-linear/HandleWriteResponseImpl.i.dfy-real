@@ -1,0 +1,36 @@
+// HandleWriteResponseImpl.i.dfy
+module HandleWriteResponseImpl {
+  method writeResponse(inout old_s: Full, io: DiskIOHandler) returns (s: Full)
+  {
+    s := old_s;
+    var id: D.ReqId, addr: uint64, len: uint64 := io.getWriteResult();
+    var loc: Location := DiskLayout.Location(addr, len);
+    if ValidNodeLocation(loc) && s.bc.Ready? && id in s.bc.outstandingBlockWrites {
+      var _inout_tmp_0: ImplVariables;
+      _inout_tmp_0 := IOImpl.writeNodeResponse(inout s.bc, io);
+      s := s.(bc := _inout_tmp_0);
+    } else if ValidIndirectionTableLocation(loc) && s.bc.Ready? && s.bc.outstandingIndirectionTableWrite == Some(id) {
+      var frozen_loc: Location, _inout_tmp_1: ImplVariables := IOImpl.writeIndirectionTableResponse(inout s.bc, io);
+      s := s.(bc := _inout_tmp_1);
+      var _inout_tmp_2: Committer;
+      _inout_tmp_2 := s.jc.receiveFrozenLoc(inout s.jc, frozen_loc);
+      s := s.(jc := _inout_tmp_2);
+    } else if s.jc.status.StatusReady? && ValidJournalLocation(loc) {
+      var _inout_tmp_3: Committer;
+      _inout_tmp_3 := s.jc.writeBackJournalResp(inout s.jc, io);
+      s := s.(jc := _inout_tmp_3);
+    } else if ValidSuperblockLocation(loc) && Some(id) == s.jc.superblockWrite {
+      if s.jc.status.StatusReady? && s.jc.commitStatus.CommitAdvanceLocation? {
+        var _inout_tmp_4: ImplVariables;
+        _inout_tmp_4 := IOImpl.cleanUp(inout s.bc);
+        s := s.(bc := _inout_tmp_4);
+      }
+      var _inout_tmp_5: Committer;
+      _inout_tmp_5 := s.jc.writeBackSuperblockResp(inout s.jc, IIO(io));
+      s := s.(jc := _inout_tmp_5);
+    } else {
+      print "writeResponse: doing nothing\n";
+    }
+  }
+}
+Dafny program verifier did not attempt verification

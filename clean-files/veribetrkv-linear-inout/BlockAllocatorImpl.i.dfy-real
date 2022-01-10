@@ -1,0 +1,122 @@
+  var Length: int  // immutable
+  method DebugAccumulate() returns (acc: DebugAccumulator.DebugAccumulator)
+  {
+    acc := DebugAccumulator.EmptyAccumulator();
+    var r: DebugAccumulator.DebugAccumulator := ephemeral.DebugAccumulate();
+    var a: AccRec := new DebugAccumulator.AccRec.Index(r);
+    acc := DebugAccumulator.AccPut(acc, "ephemeral", a);
+    if frozen.lSome? {
+      r := frozen.value.DebugAccumulate();
+    } else {
+      r := DebugAccumulator.EmptyAccumulator();
+    }
+    a := new DebugAccumulator.AccRec.Index(r);
+    acc := DebugAccumulator.AccPut(acc, "frozen", a);
+    r := persistent.DebugAccumulate();
+    a := new DebugAccumulator.AccRec.Index(r);
+    acc := DebugAccumulator.AccPut(acc, "persistent", a);
+    r := outstanding.DebugAccumulate();
+    a := new DebugAccumulator.AccRec.Index(r);
+    acc := DebugAccumulator.AccPut(acc, "outstanding", a);
+    r := full.DebugAccumulate();
+    a := new DebugAccumulator.AccRec.Index(r);
+    acc := DebugAccumulator.AccPut(acc, "full", a);
+  }
+  static method Constructor(bm: BitmapImpl.Bitmap) returns (ba: BlockAllocator)
+  {
+    var per: Bitmap := BitmapImpl.Bitmap.CloneConstructor(bm);
+    var out: Bitmap := BitmapImpl.Bitmap.Constructor(NumBlocksUint64());
+    var ful: Bitmap := BitmapImpl.Bitmap.CloneConstructor(bm);
+    ba := BlockAllocator(bm, lNone, per, out, ful);
+  }
+  method Alloc() returns (res: Option<uint64>)
+  {
+    res := full.Alloc();
+  }
+  method MarkUsedEphemeral(i: uint64)
+  {
+    self.ephemeral.Set(i);
+    self.full.Set(i);
+  }
+  method MarkUsedFrozen(i: uint64)
+  {
+    self.frozen.value.Set(i);
+    self.full.Set(i);
+  }
+  method MarkUsedOutstanding(i: uint64)
+  {
+    self.outstanding.Set(i);
+    self.full.Set(i);
+  }
+  method MarkFreeOutstanding(i: uint64)
+  {
+    self.outstanding.Unset(i);
+    var b0: bool := false;
+    if self.frozen.lSome? {
+      b0 := self.frozen.value.GetIsSet(i);
+    }
+    if !b0 {
+      var b1: bool := self.ephemeral.GetIsSet(i);
+      if !b1 {
+        var b2: bool := self.persistent.GetIsSet(i);
+        if !b2 {
+          self.full.Unset(i);
+        }
+      }
+    }
+  }
+  method MarkFreeEphemeral(i: uint64)
+  {
+    self.ephemeral.Unset(i);
+    var b0: bool := false;
+    if self.frozen.lSome? {
+      b0 := self.frozen.value.GetIsSet(i);
+    }
+    if !b0 {
+      var b1: bool := self.outstanding.GetIsSet(i);
+      if !b1 {
+        var b2: bool := self.persistent.GetIsSet(i);
+        if !b2 {
+          self.full.Unset(i);
+        }
+      }
+    }
+  }
+  method MoveFrozenToPersistent()
+  {
+    var BlockAllocator(eph: BitmapImpl.Bitmap, fro: lOption<BitmapImpl.Bitmap>, pre: BitmapImpl.Bitmap, out: BitmapImpl.Bitmap, full: BitmapImpl.Bitmap) := self;
+    var frozen_val: BitmapImpl.Bitmap := unwrap_value(fro);
+    var fo: Bitmap := BitmapImpl.Bitmap.UnionConstructor(frozen_val, out);
+    var fu: Bitmap := BitmapImpl.Bitmap.UnionConstructor(eph, fo);
+    self := BlockAllocator(eph, lNone, frozen_val, out, fu);
+    pre.Free();
+    full.Free();
+    fo.Free();
+  }
+  method CopyEphemeralToFrozen()
+  {
+    var BlockAllocator(eph: BitmapImpl.Bitmap, fro: lOption<BitmapImpl.Bitmap>, pre: BitmapImpl.Bitmap, out: BitmapImpl.Bitmap, full: BitmapImpl.Bitmap) := self;
+    if fro.lSome? {
+      var frozen_val: BitmapImpl.Bitmap := unwrap_value(fro);
+      frozen_val.Free();
+    } else {
+      dispose_lnone(fro);
+    }
+    var fo: Bitmap := BitmapImpl.Bitmap.CloneConstructor(eph);
+    self := BlockAllocator(eph, lSome(fo), pre, out, full);
+  }
+  method Free()
+  {
+    var BlockAllocator(ephemeral: BitmapImpl.Bitmap, frozen: lOption<BitmapImpl.Bitmap>, persistent: BitmapImpl.Bitmap, outstanding: BitmapImpl.Bitmap, full: BitmapImpl.Bitmap) := this;
+    ephemeral.Free();
+    if frozen.lSome? {
+      var value: BitmapImpl.Bitmap := unwrap_value(frozen);
+      value.Free();
+    } else {
+      dispose_lnone(frozen);
+    }
+    persistent.Free();
+    outstanding.Free();
+    full.Free();
+  }
+Dafny program verifier did not attempt verification

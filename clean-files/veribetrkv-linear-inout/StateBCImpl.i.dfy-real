@@ -1,0 +1,11 @@
+  var Length: int  // immutable
+  method DebugAccumulate() returns (acc: DebugAccumulator.DebugAccumulator)
+  function method TotalCacheSize(): (res: uint64)
+  {
+    CacheImpl.CacheCount(cache) + |outstandingBlockReads| as uint64
+  }
+  static method Constructor() returns (v: Variables)
+  {
+    v := Unready;
+  }
+Dafny program verifier did not attempt verification

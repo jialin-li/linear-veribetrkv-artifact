@@ -1,0 +1,38 @@
+  var Length: int  // immutable
+  method CopyKey(k: KeyType.Key) returns (k2: KeyType.Key)
+  {
+    k2 := [] + k;
+  }
+  method repivotLeafInternal(inout s: ImplVariables, ref: BT.G.Reference)
+  {
+    var b: bool := false;
+    if s.frozenIndirectionTable.lSome? {
+      b := s.frozenIndirectionTable.value.HasEmptyLoc(ref);
+    }
+    if b {
+      print "giving up; repivotLeaf can't run because frozen isn't written";
+    } else {
+      var bounded: bool := s.cache.NodeBoundedBucket(ref, ref, 0);
+      if !bounded {
+        print "giving up; repivotLeaf can't run because current leaf is incorrect";
+      } else {
+        var pivot: KeyType.Key;
+        var left: MutBucket, right: MutBucket;
+        var pivots: PivotTable := InitPivotTable();
+        left, right, pivot := s.cache.NodeSplitMiddle(ref);
+        var buckets': lseq<BucketImpl.MutBucket> := lseq_alloc(2);
+        lseq_give_inout(inout buckets', 0, left);
+        lseq_give_inout(inout buckets', 1, right);
+        pivot := CopyKey(pivot);
+        pivots := Insert(pivots, Keyspace.Element(pivot), 1);
+        var newnode: Node := Node(pivots, None, buckets');
+        writeBookkeeping(inout s, ref, None);
+        s.cache.Insert(ref, newnode);
+      }
+    }
+  }
+  method repivotLeaf(inout s: ImplVariables, ref: BT.G.Reference)
+  {
+    repivotLeafInternal(inout s, ref);
+  }
+Dafny program verifier did not attempt verification

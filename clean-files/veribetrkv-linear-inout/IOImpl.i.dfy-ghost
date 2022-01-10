@@ -1,0 +1,502 @@
+  var Length: int  // immutable
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): bool
+    reads reads(x0, x1, x2, x3, x4)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): set<object?>
+    reads reads(x0, x1, x2, x3, x4)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): bool
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  method getFreeLoc(s: ImplVariables, len: uint64) returns (loc: Option<Location>)
+    requires s.Ready?
+    requires s.WFBCVars()
+    requires len <= NodeBlockSizeUint64()
+    ensures loc.Some? ==> IOModel.LocAvailable(s, loc.value, len)
+    ensures loc == IOModel.getFreeLoc(s, len)
+  {
+    IOModel.reveal_getFreeLoc();
+    reveal_ConsistentBitmapInteral();
+    DiskLayout.reveal_ValidNodeAddr();
+    var i: Option<uint64> := s.blockAllocator.Alloc();
+    if i.Some? {
+      loc := Some(Location(i.value * NodeBlockSizeUint64(), len));
+      ghost var blockAllocatorI: BlockAllocatorModel.BlockAllocatorModel := s.blockAllocator.I();
+      assert i.value as int == BlockAllocatorModel.Alloc(blockAllocatorI).value;
+      BlockAllocatorModel.LemmaAllocResult(blockAllocatorI);
+      assert !IT.IndirectionTable.IsLocAllocBitmap(blockAllocatorI.ephemeral, i.value as int);
+      assert blockAllocatorI.frozen.Some? ==> !IT.IndirectionTable.IsLocAllocBitmap(blockAllocatorI.frozen.value, i.value as int);
+      assert !IT.IndirectionTable.IsLocAllocBitmap(blockAllocatorI.persistent, i.value as int);
+      assert !IT.IndirectionTable.IsLocAllocBitmap(blockAllocatorI.outstanding, i.value as int);
+    } else {
+      loc := None;
+    }
+  }
+  method FreeSectorOpt(sector: lOption<SSI.Sector>)
+    requires sector.lSome? ==> SSI.WFSector(sector.value)
+  {
+    match sector {
+      case lSome(value) =>
+        {
+          value.Free();
+        }
+      case lNone() =>
+        {
+        }
+    }
+  }
+  method RequestWrite(io: DiskIOHandler, loc: Location, sector: SSI.Sector)
+      returns (id: D.ReqId)
+    requires SSI.WFSector(sector)
+    requires SSI.Inv(sector)
+    requires io.initialized()
+    requires sector.SectorSuperblock?
+    requires ValidSuperblockLocation(loc)
+    requires ValidLocation(loc)
+    modifies io
+    ensures io.diskOp().ReqWriteOp? && io.diskOp().id == id
+    ensures ValidDiskOp(diskOp(IIO(io)))
+    ensures ValidSuperblock1Location(loc) ==> IDiskOp(diskOp(IIO(io))) == BlockJournalDisk.DiskOp(BlockDisk.NoDiskOp, JournalDisk.ReqWriteSuperblockOp(id, 0, JournalDisk.ReqWriteSuperblock(sector.superblock)))
+    ensures ValidSuperblock2Location(loc) ==> IDiskOp(diskOp(IIO(io))) == BlockJournalDisk.DiskOp(BlockDisk.NoDiskOp, JournalDisk.ReqWriteSuperblockOp(id, 1, JournalDisk.ReqWriteSuperblock(sector.superblock)))
+  {
+    var bytes: array?<byte> := MarshallingImpl.MarshallCheckedSector(sector);
+    id := io.write(loc.addr, bytes[..]);
+    sector.Free();
+    Marshalling.reveal_parseCheckedSector();
+    Marshalling.reveal_parseSector();
+    reveal_SectorOfBytes();
+    reveal_ValidCheckedBytes();
+    reveal_Parse();
+    D.reveal_ChecksumChecksOut();
+  }
+  method FindLocationAndRequestWrite(io: DiskIOHandler, s: ImplVariables, sector: SSI.Sector)
+      returns (id: Option<D.ReqId>, loc: Option<Location>)
+    requires s.WFBCVars()
+    requires s.Ready?
+    requires SSI.WFSector(sector)
+    requires SSI.Inv(sector)
+    requires io.initialized()
+    requires sector.SectorNode?
+    modifies io
+    ensures IOModel.FindLocationAndRequestWrite(old(IIO(io)), s, sector, id, loc, IIO(io))
+    ensures id.Some? ==> loc.Some? && io.diskOp().ReqWriteOp? && io.diskOp().id == id.value
+    ensures id.None? ==> IIO(io) == old(IIO(io))
+    ensures ValidDiskOp(diskOp(IIO(io)))
+    ensures id.Some? ==> DiskLayout.ValidLocation(loc.value)
+    ensures id.Some? ==> sector.SectorNode? ==> BC.ValidAllocation(s.I(), loc.value)
+    ensures id.Some? ==> sector.SectorNode? ==> DiskLayout.ValidNodeLocation(loc.value)
+    ensures sector.SectorNode? ==> id.Some? ==> IDiskOp(diskOp(IIO(io))) == BlockJournalDisk.DiskOp(BlockDisk.ReqWriteNodeOp(id.value, BlockDisk.ReqWriteNode(loc.value, sector.node.I())), JournalDisk.NoDiskOp)
+  {
+    IOModel.reveal_FindLocationAndRequestWrite();
+    var bytes: array?<byte> := MarshallingImpl.MarshallCheckedSector(sector);
+    if bytes == null {
+      id := None;
+      loc := None;
+    } else {
+      var len: uint64 := bytes.Length as uint64;
+      loc := getFreeLoc(s, len);
+      if loc.Some? {
+        var i: D.ReqId := io.write(loc.value.addr, bytes[..]);
+        id := Some(i);
+      } else {
+        id := None;
+      }
+    }
+    Marshalling.reveal_parseCheckedSector();
+    Marshalling.reveal_parseSector();
+    reveal_SectorOfBytes();
+    reveal_ValidCheckedBytes();
+    reveal_Parse();
+    D.reveal_ChecksumChecksOut();
+  }
+  method FindIndirectionTableLocationAndRequestWrite(io: DiskIOHandler, s: ImplVariables, ghost sector: SSI.Sector)
+      returns (id: Option<D.ReqId>, loc: Option<Location>)
+    requires s.Ready?
+    requires io.initialized()
+    requires SSI.WFSector(sector)
+    requires SSI.Inv(sector)
+    requires sector.SectorIndirectionTable?
+    requires s.frozenIndirectionTable.lSome? && sector.indirectionTable == s.frozenIndirectionTable.value
+    requires s.Inv()
+    modifies io
+    ensures ValidDiskOp(diskOp(IIO(io)))
+    ensures id.Some? ==> id.value == old(io.reservedId())
+    ensures id.Some? ==> loc.Some? && io.diskOp().ReqWriteOp? && io.diskOp().id == id.value
+    ensures id.None? ==> IIO(io) == old(IIO(io))
+    ensures id.Some? ==> loc.Some?
+    ensures id.Some? ==> DiskLayout.ValidIndirectionTableLocation(loc.value)
+    ensures id.Some? ==> IDiskOp(diskOp(IIO(io))) == BlockJournalDisk.DiskOp(BlockDisk.ReqWriteIndirectionTableOp(id.value, BlockDisk.ReqWriteIndirectionTable(loc.value, sector.indirectionTable.I())), JournalDisk.NoDiskOp)
+    ensures loc.Some? ==> !overlap(loc.value, s.persistentIndirectionTableLoc)
+  {
+    var bytes: array?<byte> := MarshallingImpl.MarshallCheckedSectorIndirectionTable(s.frozenIndirectionTable.value, sector);
+    if bytes == null {
+      id := None;
+      loc := None;
+    } else {
+      var len: uint64 := bytes.Length as uint64;
+      loc := Some(DiskLayout.Location(otherIndirectionTableAddr(s.persistentIndirectionTableLoc.addr), len));
+      var i: D.ReqId := io.write(loc.value.addr, bytes[..]);
+      id := Some(i);
+    }
+    Marshalling.reveal_parseSector();
+    Marshalling.reveal_parseCheckedSector();
+    reveal_SectorOfBytes();
+    reveal_ValidCheckedBytes();
+    reveal_Parse();
+    D.reveal_ChecksumChecksOut();
+    ghost var dop: D.DiskOp := diskOp(IIO(io));
+    if dop.ReqWriteOp? {
+      if overlap(loc.value, s.persistentIndirectionTableLoc) {
+        overlappingIndirectionTablesSameAddr(loc.value, s.persistentIndirectionTableLoc);
+        assert false;
+      }
+    }
+  }
+  method RequestRead(io: DiskIOHandler, loc: Location) returns (id: D.ReqId)
+    requires io.initialized()
+    modifies io
+    ensures (id, IIO(io)) == IOModel.RequestRead(old(IIO(io)), loc)
+  {
+    id := io.read(loc.addr, loc.len);
+  }
+  method PageInIndirectionTableReq(inout s: ImplVariables, io: DiskIOHandler)
+    modifies io
+  {
+    if s.indirectionTableRead.None? {
+      var id: D.ReqId := RequestRead(io, s.indirectionTableLoc);
+      inout s.indirectionTableRead := Some(id);
+      IOModel.RequestReadCorrect(old(IIO(io)), old_s.indirectionTableLoc);
+      assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.PageInIndirectionTableReqStep);
+    } else {
+      print "PageInIndirectionTableReq: request already out\n";
+      assert IOModel.noop(old_s.I(), s.I());
+    }
+  }
+  method PageInNodeReq(inout s: ImplVariables, io: DiskIOHandler, ref: BC.Reference)
+    modifies io
+  {
+    if BC.OutstandingRead(ref) in s.outstandingBlockReads.Values {
+      print "giving up; already an outstanding read for this ref\n";
+      assert IOModel.noop(old_s.I(), s.I());
+    } else {
+      var locGraph: Option<Entry> := s.ephemeralIndirectionTable.GetEntry(ref);
+      var loc: Option<Location> := locGraph.value.loc;
+      assert ref in s.ephemeralIndirectionTable.I().locs;
+      assert DiskLayout.ValidNodeLocation(loc.value);
+      var id: D.ReqId := RequestRead(io, loc.value);
+      inout s.outstandingBlockReads := s.outstandingBlockReads[id := BC.OutstandingRead(ref)];
+      assert s.WFBCVars();
+      assert BC.PageInNodeReq(old_s.I(), s.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp, ref);
+      assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.PageInNodeReqStep(ref));
+    }
+  }
+  function ISectorOpt(sector: Option<SSI.Sector>): Option<SectorType.Sector>
+    requires sector.Some? ==> SSI.WFSector(sector.value)
+  {
+    match sector {
+      case None() =>
+        None
+      case Some(sector) =>
+        Some(SSI.ISector(sector))
+    }
+  }
+  method ReadSector(io: DiskIOHandler) returns (id: D.ReqId, sector: lOption<SSI.Sector>)
+    requires io.diskOp().RespReadOp?
+    requires ValidDiskOp(diskOp(IIO(io)))
+    ensures var sector: Option<SSI.Sector> := sector.Option(); sector.Some? ==> SSI.WFSector(sector.value) && SSI.Inv(sector.value)
+    ensures sector.lSome? && sector.value.SectorIndirectionTable? ==> sector.value.indirectionTable.TrackingGarbage()
+    ensures (id, ISectorOpt(sector.Option())) == IOModel.ReadSector(IIO(io))
+  {
+    var id1: D.ReqId, addr: uint64, bytes: seq<byte> := io.getReadResult();
+    id := id1;
+    if |bytes| as uint64 <= LargestBlockSizeOfAnyTypeUint64() {
+      var loc: Location := DiskLayout.Location(addr, |bytes| as uint64);
+      var sectorOpt: lOption<Sector> := MarshallingImpl.ParseCheckedSector(bytes);
+      if sectorOpt.lSome? && ((ValidNodeLocation(loc) && sectorOpt.value.SectorNode?) || (ValidSuperblockLocation(loc) && sectorOpt.value.SectorSuperblock?) || (ValidIndirectionTableLocation(loc) && sectorOpt.value.SectorIndirectionTable?)) {
+        sector := sectorOpt;
+      } else {
+        FreeSectorOpt(sectorOpt);
+        sector := lNone;
+      }
+    } else {
+      sector := lNone;
+    }
+    Marshalling.reveal_parseCheckedSector();
+    Marshalling.reveal_parseSector();
+    reveal_SectorOfBytes();
+    reveal_ValidCheckedBytes();
+    reveal_Parse();
+    D.reveal_ChecksumChecksOut();
+  }
+  method PageInIndirectionTableResp(inout s: ImplVariables, io: DiskIOHandler)
+  {
+    var sectorOpt: lOption<SSI.Sector>;
+    var id: D.ReqId;
+    id, sectorOpt := ReadSector(io);
+    IOModel.ReadSectorCorrect(IIO(io));
+    Marshalling.reveal_parseSector();
+    reveal_SectorOfBytes();
+    reveal_Parse();
+    if Some(id) == s.indirectionTableRead && sectorOpt.lSome? && sectorOpt.value.SectorIndirectionTable? {
+      var lSome(sector: SSI.Sector) := sectorOpt;
+      var SectorIndirectionTable(ephemeralIndirectionTable: IT.IndirectionTable) := sector;
+      var bm: BitmapImpl.Bitmap;
+      var succ: bool;
+      succ, bm := ephemeralIndirectionTable.InitLocBitmap();
+      if succ {
+        var Loading(indirectionTableLoc: DiskLayout.Location, indirectionTableRead: Option<BC.ReqId>) := s;
+        var blockAllocator: BlockAllocator := BlockAllocatorImpl.BlockAllocator.Constructor(bm);
+        var persistentIndirectionTable: IndirectionTable := ephemeralIndirectionTable.Clone();
+        var lru: LinearLru := LinearLru.LinearLru.Alloc();
+        var cache: LMutCache := CacheImpl.LMutCache.NewCache();
+        s := Variables.Ready(persistentIndirectionTable, lNone, ephemeralIndirectionTable, indirectionTableLoc, None, None, map[], map[], cache, lru, blockAllocator);
+        BucketWeights.WeightBucketEmpty();
+        assert s.ConsistentBitmap() by {
+          reveal ConsistentBitmapInteral();
+        }
+        assert s.WFBCVars();
+        assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.PageInIndirectionTableRespStep);
+        assert BBC.Next(old_s.I(), s.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp);
+      } else {
+        bm.Free();
+        ephemeralIndirectionTable.Free();
+        print "InitLocBitmap failed\n";
+        assert old_s == s;
+        assert ValidDiskOp(diskOp(IIO(io)));
+        assert BC.NoOp(old_s.I(), s.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp);
+        assert BBC.BlockCacheMove(old_s.I(), s.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp, BC.NoOpStep);
+        assert BBC.NextStep(old_s.I(), s.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp, BBC.BlockCacheMoveStep(BC.NoOpStep));
+        assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.NoOpStep);
+      }
+    } else {
+      assert old_s == s;
+      assert ValidDiskOp(diskOp(IIO(io)));
+      assert BC.NoOp(old_s.I(), s.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp);
+      assert BBC.BlockCacheMove(old_s.I(), s.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp, BC.NoOpStep);
+      assert BBC.NextStep(old_s.I(), s.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp, BBC.BlockCacheMoveStep(BC.NoOpStep));
+      assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.NoOpStep);
+      FreeSectorOpt(sectorOpt);
+      print "giving up; did not get indirectionTable when reading\n";
+    }
+  }
+  method {:timeLimitMultiplier 2} PageInNodeResp(inout s: ImplVariables, io: DiskIOHandler)
+  {
+    var id: D.ReqId;
+    var sector: lOption<SSI.Sector>;
+    id, sector := ReadSector(io);
+    assert sector.lSome? ==> SSI.WFSector(sector.value);
+    IOModel.ReadSectorCorrect(IIO(io));
+    Marshalling.reveal_parseSector();
+    reveal_SectorOfBytes();
+    reveal_Parse();
+    if id in s.outstandingBlockReads {
+      var ref: Reference := s.outstandingBlockReads[id].ref;
+      var lbaGraph: Option<Entry> := s.ephemeralIndirectionTable.GetEntry(ref);
+      if lbaGraph.Some? && lbaGraph.value.loc.Some? {
+        var cacheLookup: bool := s.cache.InCache(ref);
+        if cacheLookup {
+          FreeSectorOpt(sector);
+          print "PageInNodeResp: ref in s.cache\n";
+          assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.NoOpStep);
+        } else {
+          assert sector.lSome? ==> SSI.WFSector(sector.value);
+          var lba: Location := lbaGraph.value.loc.value;
+          var graph: seq<BT.G.Reference> := lbaGraph.value.succs;
+          if sector.lSome? && sector.value.SectorNode? {
+            var lSome(value: SSI.Sector) := sector;
+            var SectorNode(node: Node) := value;
+            var children: Option<seq<BT.G.Reference>> := node.children;
+            if graph == if children.Some? then children.value else [] {
+              s.lru.Use(ref);
+              s.cache.Insert(ref, node);
+              inout s.outstandingBlockReads := ComputeMapRemove1(s.outstandingBlockReads, id);
+              BucketWeights.WeightBucketEmpty();
+              LruModel.LruUse(old_s.lru.Queue(), ref);
+              assert |s.cache.I()| == |old_s.cache.I()| + 1;
+              assert |s.outstandingBlockReads| == |old_s.outstandingBlockReads| - 1;
+              assert s.WFBCVars();
+              assert BC.PageInNodeResp(old_s.I(), s.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp);
+              assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.PageInNodeRespStep);
+            } else {
+              var _: () := FreeNode(node);
+              print "giving up; block does not match graph\n";
+              assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.NoOpStep);
+            }
+          } else {
+            FreeSectorOpt(sector);
+            print "giving up; block read in was not block\n";
+            assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.NoOpStep);
+          }
+        }
+      } else {
+        FreeSectorOpt(sector);
+        print "PageInNodeResp: ref !in lbas\n";
+        assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.NoOpStep);
+      }
+    } else {
+      FreeSectorOpt(sector);
+      print "PageInNodeResp: unrecognized id from Read\n";
+      assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.NoOpStep);
+    }
+  }
+  method writeNodeResponse(inout s: ImplVariables, io: DiskIOHandler)
+  {
+    var id: D.ReqId, addr: uint64, len: uint64 := io.getWriteResult();
+    IOModel.lemmaOutstandingLocIndexValid(s, id);
+    var locIdx: uint64 := s.outstandingBlockWrites[id].loc.addr / NodeBlockSizeUint64();
+    s.blockAllocator.MarkFreeOutstanding(locIdx);
+    inout s.outstandingBlockWrites := ComputeMapRemove1(s.outstandingBlockWrites, id);
+    reveal_ConsistentBitmapInteral();
+    DiskLayout.reveal_ValidNodeAddr();
+    assert locIdx as int * NodeBlockSize() == old_s.outstandingBlockWrites[id].loc.addr as int;
+    BitmapModel.reveal_BitUnset();
+    BitmapModel.reveal_IsSet();
+    forall i: int | IsLocAllocOutstanding(s.outstandingBlockWrites, i)
+      ensures IT.IndirectionTable.IsLocAllocBitmap(s.blockAllocator.I().outstanding, i)
+    {
+      if i != locIdx as int {
+        assert IsLocAllocOutstanding(old_s.outstandingBlockWrites, i);
+        assert IT.IndirectionTable.IsLocAllocBitmap(old_s.blockAllocator.I().outstanding, i);
+        assert IT.IndirectionTable.IsLocAllocBitmap(s.blockAllocator.I().outstanding, i);
+      } else {
+        ghost var id1: uint64 :| id1 in s.outstandingBlockWrites && s.outstandingBlockWrites[id1].loc.addr as int == i * NodeBlockSize() as int;
+        assert BC.OutstandingBlockWritesDontOverlap(old_s.outstandingBlockWrites, id, id1);
+      }
+    }
+    forall i: int | IT.IndirectionTable.IsLocAllocBitmap(s.blockAllocator.I().outstanding, i)
+      ensures IsLocAllocOutstanding(s.outstandingBlockWrites, i)
+    {
+      if i != locIdx as int {
+        assert IT.IndirectionTable.IsLocAllocBitmap(old_s.blockAllocator.I().outstanding, i);
+        assert IsLocAllocOutstanding(s.outstandingBlockWrites, i);
+      } else {
+        assert IsLocAllocOutstanding(s.outstandingBlockWrites, i);
+      }
+    }
+    assert s.WFBCVars();
+    assert IOModel.stepsBC(old_s.I(), s.I(), StatesInternalOp, IIO(io), BC.WriteBackNodeRespStep);
+  }
+  method writeIndirectionTableResponse(inout s: ImplVariables, io: DiskIOHandler) returns (loc: Location)
+  {
+    inout s.outstandingIndirectionTableWrite := None;
+    loc := s.frozenIndirectionTableLoc.value;
+    ghost var bdop: BlockDisk.DiskOp := IDiskOp(diskOp(IIO(io))).bdop;
+    assert s.WFBCVars();
+    assert BC.WriteBackIndirectionTableResp(old_s.I(), s.I(), bdop, SendFrozenLocOp(loc));
+    assert BC.NextStep(old_s.I(), s.I(), bdop, SendFrozenLocOp(loc), BC.WriteBackIndirectionTableRespStep);
+    assert BBC.NextStep(old_s.I(), s.I(), bdop, SendFrozenLocOp(loc), BBC.BlockCacheMoveStep(BC.WriteBackIndirectionTableRespStep));
+    assert BBC.Next(old_s.I(), s.I(), bdop, SendFrozenLocOp(loc));
+  }
+  method cleanUp(inout s: ImplVariables)
+  {
+    IOModel.lemmaBlockAllocatorFrozenSome(s);
+    var Ready(persistentIndirectionTable: IT.IndirectionTable, frozenIndirectionTable: lOption<IT.IndirectionTable>, ephemeralIndirectionTable: IT.IndirectionTable, persistentIndirectionTableLoc: DiskLayout.Location, frozenIndirectionTableLoc: Option<DiskLayout.Location>, outstandingIndirectionTableWrite: Option<BC.ReqId>, outstandingBlockWrites: map<BC.ReqId, BC.OutstandingWrite>, outstandingBlockReads: map<BC.ReqId, BC.OutstandingRead>, cache: LMutCache, lru: LinearLru.LinearLru, blockAllocator: BlockAllocatorImpl.BlockAllocator) := s;
+    persistentIndirectionTable.Free();
+    var value: IT.IndirectionTable := unwrap_value(frozenIndirectionTable);
+    s := Ready(value, lNone, ephemeralIndirectionTable, frozenIndirectionTableLoc.value, None, outstandingIndirectionTableWrite, outstandingBlockWrites, outstandingBlockReads, cache, lru, blockAllocator);
+    assert s.blockAllocator == old_s.blockAllocator;
+    assert old_s.blockAllocator.Inv();
+    s.blockAllocator.MoveFrozenToPersistent();
+    reveal_ConsistentBitmapInteral();
+    assert s.WFBCVars();
+    assert BC.CleanUp(old_s.I(), s.I(), BlockDisk.NoDiskOp, CleanUpOp);
+    assert BC.NextStep(old_s.I(), s.I(), BlockDisk.NoDiskOp, CleanUpOp, BC.CleanUpStep);
+    assert BBC.NextStep(old_s.I(), s.I(), BlockDisk.NoDiskOp, CleanUpOp, BBC.BlockCacheMoveStep(BC.CleanUpStep));
+    assert BBC.Next(old_s.I(), s.I(), BlockDisk.NoDiskOp, CleanUpOp);
+  }
+Dafny program verifier did not attempt verification

@@ -1,0 +1,30 @@
+  var Length: int  // immutable
+  method readResponse(inout s: Full, io: DiskIOHandler)
+  {
+    var id: D.ReqId, addr: uint64, bytes: seq<byte> := io.getReadResult();
+    var loc: Location := DiskLayout.Location(addr, |bytes| as uint64);
+    if ValidNodeLocation(loc) {
+      if s.bc.Ready? {
+        IOImpl.PageInNodeResp(inout s.bc, io);
+      } else {
+        print "readResponse: doing nothing\n";
+      }
+    } else if ValidIndirectionTableLocation(loc) {
+      if s.bc.Loading? {
+        IOImpl.PageInIndirectionTableResp(inout s.bc, io);
+      } else {
+        print "readResponse: doing nothing\n";
+      }
+    } else if ValidJournalLocation(loc) {
+      if s.jc.status.StatusLoadingOther? {
+        s.jc.pageInJournalResp(io);
+      } else 
+    } else if loc == Superblock1Location() {
+      s.jc.readSuperblockResp(io, 0);
+    } else if loc == Superblock2Location() {
+      s.jc.readSuperblockResp(io, 1);
+    } else {
+      print "readResponse: doing nothing\n";
+    }
+  }
+Dafny program verifier did not attempt verification

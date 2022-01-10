@@ -1,0 +1,245 @@
+  var Length: int  // immutable
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): bool
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): bool
+    reads reads(x0, x1, x2, x3, x4)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): set<object?>
+    reads reads(x0, x1, x2, x3, x4)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  predicate {:opaque} {:fuel 0, 0} Inv()
+    decreases height, 1
+  {
+    Inv1()
+  }
+  predicate Inv1()
+    decreases height, 0
+  {
+    (this.Basic? ==>
+      true &&
+      biter.WFIter()) &&
+    (this.Compose? ==>
+      top.height < this.height &&
+      bot.height < this.height &&
+      top.Inv() &&
+      bot.Inv())
+  }
+  method Free()
+    requires Inv()
+  {
+    reveal_Inv_for(this);
+    match this {
+      case Basic(biter, height) =>
+        biter.Free();
+      case Compose(top, bot, next, height) =>
+        top.Free();
+        bot.Free();
+    }
+  }
+  function I(): BucketGeneratorModel.Generator
+    requires Inv()
+    ensures BucketGeneratorModel.WF(I())
+    decreases height
+  {
+    reveal_Inv_for(this);
+    if this.Basic? then
+      BucketGeneratorModel.BasicGenerator(biter.bucket, IIterator(biter.it))
+    else
+      BucketGeneratorModel.ComposeGenerator(top.I(), bot.I(), next)
+  }
+  method GenLeft() returns (res: BucketIteratorModel.IteratorOutput)
+    requires Inv()
+    ensures res == BucketGeneratorModel.GenLeft(I())
+  {
+    reveal_Inv_for(this);
+    if this.Basic? {
+      res := biter.GetNext();
+    } else {
+      res := next;
+    }
+  }
+  method GenPop()
+    requires old_self.Inv()
+    requires BucketGeneratorModel.GenLeft(old_self.I()).Next?
+    ensures self.Inv()
+    ensures self.I() == BucketGeneratorModel.GenPop(old_self.I())
+    decreases old_self.height
+  {
+    reveal_Inv_for(self);
+    BucketGeneratorModel.reveal_BasicGenPop();
+    BucketGeneratorModel.reveal_MergeGenPop();
+    BucketGeneratorModel.reveal_GenPop();
+    if self.Basic? {
+      self.biter.IterInc();
+    } else {
+      var top_next: BucketIteratorModel.IteratorOutput := self.top.GenLeft();
+      var bot_next: BucketIteratorModel.IteratorOutput := self.bot.GenLeft();
+      var c: int32;
+      if top_next.Next? && bot_next.Next? {
+        c := cmp(top_next.key, bot_next.key);
+      }
+      if top_next.Next? && bot_next.Next? && c == 0 {
+        self.top.GenPop();
+        self.bot.GenPop();
+        inout self.next := BucketIteratorModel.Next(top_next.key, Merge(top_next.msg, bot_next.msg));
+      } else if top_next.Next? && (bot_next.Next? ==> c < 0) {
+        self.top.GenPop();
+        inout self.next := top_next;
+      } else if bot_next.Next? {
+        self.bot.GenPop();
+        inout self.next := bot_next;
+      } else {
+        inout self.next := BucketIteratorModel.Done;
+      }
+      inout ghost self.height := self.top.height + self.bot.height + 1;
+    }
+    assert self.Inv1();
+    reveal_Inv_for(self);
+  }
+  static method GenCompose(top: Generator, bot: Generator) returns (g: Generator)
+    requires top.Inv()
+    requires bot.Inv()
+    ensures g.Inv()
+    ensures g.I() == BucketGeneratorModel.GenCompose(top.I(), bot.I())
+  {
+    var top_next: BucketIteratorModel.IteratorOutput := top.GenLeft();
+    var bot_next: BucketIteratorModel.IteratorOutput := bot.GenLeft();
+    var c: int32;
+    if top_next.Next? && bot_next.Next? {
+      c := cmp(top_next.key, bot_next.key);
+    }
+    g := Compose(top, bot, top_next, 0);
+    if top_next.Next? && bot_next.Next? && c == 0 {
+      g.top.GenPop();
+      g.bot.GenPop();
+      inout g.next := BucketIteratorModel.Next(top_next.key, Merge(top_next.msg, bot_next.msg));
+    } else if top_next.Next? && (bot_next.Next? ==> c < 0) {
+      g.top.GenPop();
+      inout g.next := top_next;
+    } else if bot_next.Next? {
+      g.bot.GenPop();
+      inout g.next := bot_next;
+    } else {
+      inout g.next := BucketIteratorModel.Done;
+    }
+    inout ghost g.height := g.top.height + g.bot.height + 1;
+    assert g.Inv1();
+    reveal_Inv_for(g);
+    BucketGeneratorModel.reveal_GenCompose();
+  }
+  static method GenFromBucketWithLowerBound(bucket: MutBucket, start: UI.RangeStart) returns (g: Generator)
+    requires bucket.Inv()
+    ensures g.Basic?
+    ensures g.biter.bucket == bucket.I()
+    ensures g.Inv()
+    ensures g.I() == BucketGeneratorModel.GenFromBucketWithLowerBound(bucket.I(), start)
+  {
+    var biter: BucketIter;
+    match start {
+      case SExclusive(key) =>
+        {
+          biter := BucketIter.IterFindFirstGt(bucket, key);
+        }
+      case SInclusive(key) =>
+        {
+          biter := BucketIter.IterFindFirstGte(bucket, key);
+        }
+      case NegativeInf() =>
+        {
+          biter := BucketIter.IterStart(bucket);
+        }
+    }
+    g := Basic(biter, 1);
+    assert g.Inv1();
+    reveal_Inv_for(g);
+    BucketGeneratorModel.reveal_GenFromBucketWithLowerBound();
+  }
+Dafny program verifier did not attempt verification

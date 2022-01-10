@@ -1,0 +1,39 @@
+// DeallocImpl.i.dfy
+module DeallocImpl {
+  method Dealloc(inout old_s: ImplVariables, io: DiskIOHandler, ref: BT.G.Reference)
+      returns (s: ImplVariables)
+    modifies io
+  {
+    s := old_s;
+    var nop: bool := false;
+    if s.frozenIndirectionTable.lSome? {
+      var b: bool := s.frozenIndirectionTable.value.HasEmptyLoc(ref);
+      if b {
+        print "giving up; dealloc can't run because frozen isn't written";
+        nop := true;
+      }
+    }
+    if nop || BC.OutstandingRead(ref) in s.outstandingBlockReads.Values {
+      print "giving up; dealloc can't dealloc because of outstanding read\n";
+    } else {
+      var oldLoc: Option<Location>, _inout_tmp_1: IndirectionTable := s.ephemeralIndirectionTable.RemoveRef(inout s.ephemeralIndirectionTable, ref);
+      s := s.(ephemeralIndirectionTable := _inout_tmp_1);
+      var _inout_tmp_2: LinearLru;
+      _inout_tmp_2 := s.lru.Remove(inout s.lru, ref);
+      s := s.(lru := _inout_tmp_2);
+      var _inout_tmp_3: LMutCache;
+      _inout_tmp_3 := s.cache.Remove(inout s.cache, ref);
+      s := s.(cache := _inout_tmp_3);
+      if oldLoc.Some? {
+        var _inout_tmp_0: BlockAllocator;
+        _inout_tmp_0 := s.blockAllocator.MarkFreeEphemeral(inout s.blockAllocator, oldLoc.value.addr / NodeBlockSizeUint64());
+        s := s.(blockAllocator := _inout_tmp_0);
+      }
+    }
+  }
+  method FindDeallocable(s: ImplVariables) returns (ref: Option<Reference>)
+  {
+    ref := s.ephemeralIndirectionTable.FindDeallocable();
+  }
+}
+Dafny program verifier did not attempt verification

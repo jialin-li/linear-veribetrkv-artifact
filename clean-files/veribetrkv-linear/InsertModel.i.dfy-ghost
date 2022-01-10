@@ -1,0 +1,78 @@
+// InsertModel.i.dfy
+module InsertModel {
+  function {:opaque} {:fuel 0, 0} InsertKeyValue(s: BBC.Variables, key: Key, value: Value): (BBC.Variables, bool)
+    requires BBC.Inv(s)
+    requires s.Ready?
+    requires BT.G.Root() in s.cache
+    requires ghost var root: G.Node := s.cache[BT.G.Root()]; BT.WFNode(root) && BoundedKey(root.pivotTable, key)
+    decreases s, key, value
+  {
+    lemmaChildrenConditionsOfNode(s, BT.G.Root());
+    if s.frozenIndirectionTable.Some? && s.frozenIndirectionTable.value.hasEmptyLoc(BT.G.Root()) then
+      (s, false)
+    else
+      ghost var msg: Message := Messages.Define(value); ghost var rootref: Reference := BT.G.Root(); ghost var newCache: map<Reference, Node> := s.cache[rootref := BT.NodeInsertKeyValue(s.cache[rootref], key, msg)]; ghost var s0: BC.Variables := s.(cache := newCache); ghost var s': BBC.Variables := writeBookkeepingNoSuccsUpdate(s0, BT.G.Root()); (s', true)
+  }
+  lemma {:timeLimitMultiplier 3}  InsertKeyValueCorrect(s: BBC.Variables, key: Key, value: Value, replay: bool)
+    requires InsertKeyValue.requires(s, key, value)
+    requires WeightKey(key) + WeightMessage(Messages.Define(value)) + WeightBucketList(s.cache[BT.G.Root()].buckets) <= MaxTotalBucketWeight()
+    ensures var (s': BC.Variables, success: bool) := InsertKeyValue(s, key, value); (success ==> BBC.Next(s, s', BlockDisk.NoDiskOp, AdvanceOp(UI.PutOp(key, value), replay))) && (!success ==> betree_next(s, s')) && StateBCImpl.WFCache(s'.cache) && s.totalCacheSize() == s'.totalCacheSize()
+    decreases s, key, value, replay
+  {
+    reveal_InsertKeyValue();
+    BT.reveal_NodeInsertKeyValue();
+    if s.frozenIndirectionTable.Some? && s.frozenIndirectionTable.value.hasEmptyLoc(BT.G.Root()) {
+      assert s.frozenIndirectionTable.Some? && BT.G.Root() in s.frozenIndirectionTable.value.graph && !(BT.G.Root() in s.frozenIndirectionTable.value.locs);
+      assert noop(s, s);
+      return;
+    }
+    ghost var msg: Message := Messages.Define(value);
+    ghost var root: G.Node := s.cache[BT.G.Root()];
+    ghost var r: int := Pivots.Route(root.pivotTable, key);
+    ghost var bucket: Bucket := root.buckets[r];
+    assert WFBucket(bucket);
+    ghost var old_map: map<Key, Message> := bucket.as_map();
+    ghost var new_map: map<Key, Message> := old_map[key := msg];
+    ghost var newBucket: Bucket := B(new_map);
+    assert WFBucket(newBucket) by {
+      assert WFBucketMap(old_map);
+      assert old_map.Keys + {key} == new_map.Keys;
+      if key !in old_map {
+        assert old_map.Values + {msg} == new_map.Values;
+        assert WFBucketMap(new_map);
+      } else {
+        if exists key': seq<NativeTypes.byte> {:trigger old_map[key']} {:trigger key' in old_map} :: key' in old_map && key' != key && old_map[key] == old_map[key'] {
+          assert old_map[key] in new_map.Values;
+          assert old_map.Values + {msg} == new_map.Values;
+          assert WFBucketMap(new_map);
+        } else {
+          assert old_map.Values - {old_map[key]} + {msg} == new_map.Values;
+          assert WFBucketMap(new_map);
+        }
+      }
+    }
+    ghost var newRoot: G.Node := root.(buckets := root.buckets[r := newBucket]);
+    ghost var newCache: map<Reference, Node> := s.cache[BT.G.Root() := newRoot];
+    WeightBucketListInsert(root.buckets, root.pivotTable, key, msg);
+    assert BC.BlockPointsToValidReferences(root, s.ephemeralIndirectionTable.graph);
+    assert BT.WFNode(newRoot);
+    ghost var s0: BC.Variables := s.(cache := newCache);
+    ghost var s': BBC.Variables := writeBookkeepingNoSuccsUpdate(s0, BT.G.Root());
+    reveal_writeBookkeepingNoSuccsUpdate();
+    writeCorrect(s0, BT.G.Root(), newRoot);
+    ghost var oldroot: G.Node := root;
+    ghost var newroot: G.Node := newRoot;
+    assert newroot == BT.AddMessageToNode(oldroot, key, msg);
+    assert BT.G.Successors(newroot) == BT.G.Successors(oldroot);
+    ghost var btStep: BetreeStep := BT.BetreeInsert(BT.MessageInsertion(key, msg, oldroot));
+    assert BT.ValidInsertion(BT.MessageInsertion(key, msg, oldroot));
+    assert BC.Dirty(s, s', BT.G.Root(), newroot);
+    assert BC.OpStep(s, s', BT.G.WriteOp(BT.G.Root(), newroot));
+    assert BT.ValidBetreeStep(btStep);
+    assert BC.OpStep(s, s', BT.BetreeStepOps(btStep)[0]);
+    assert BC.OpTransaction(s, s', BT.BetreeStepOps(btStep));
+    assert BBC.BetreeMove(s, s', BlockDisk.NoDiskOp, AdvanceOp(UI.PutOp(key, value), replay), btStep);
+    assert stepsBetree(s, s', AdvanceOp(UI.PutOp(key, value), replay), btStep);
+  }
+}
+Dafny program verifier did not attempt verification

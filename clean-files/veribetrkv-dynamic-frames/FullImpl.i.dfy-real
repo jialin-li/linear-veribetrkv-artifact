@@ -1,0 +1,14 @@
+// FullImpl.i.dfy
+module FullImpl {
+  class Full {
+    var bc: Variables
+    var jc: Committer
+    ghost var Repr: set<object>
+    constructor (k: ImplConstants)
+    {
+      bc := new Variables();
+      jc := new Committer();
+      new;
+    }
+  }
+}

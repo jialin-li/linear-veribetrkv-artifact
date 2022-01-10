@@ -1,0 +1,43 @@
+  var Length: int  // immutable
+  method doGrow(inout s: ImplVariables)
+  {
+    var root: Reference := BT.G.Root();
+    var nop: bool := false;
+    if s.frozenIndirectionTable.lSome? {
+      var b: bool := s.frozenIndirectionTable.value.HasEmptyLoc(root);
+      if b {
+        print "giving up; grow can't run because frozen isn't written";
+        nop := true;
+      }
+    }
+    if !nop {
+      var oldpivots: Pivots.PivotTable, oldchildren: Option<seq<BT.G.Reference>> := s.cache.GetNodeInfo(root);
+      var containsall: bool := ComputeContainsAllKeys(oldpivots);
+      if !containsall {
+        print "giving up; grow can't run because root node is incorrect";
+      } else {
+        var newref: Option<BT.G.Reference> := allocBookkeeping(inout s, oldchildren);
+        match newref {
+          case None() =>
+            {
+              print "giving up; could not allocate ref\n";
+            }
+          case Some(newref) =>
+            {
+              WeightBucketEmpty();
+              var mutbucket := MutBucket.Alloc();
+              var buckets := lseq_alloc(1);
+              lseq_give_inout(inout buckets, 0, mutbucket);
+              var newroot := Node(InitPivotTable(), Some([newref]), buckets);
+              writeBookkeeping(inout s, root, Some([newref]));
+              s.cache.MoveAndReplace(root, newref, newroot);
+            }
+        }
+      }
+    } else 
+  }
+  method grow(inout s: ImplVariables)
+  {
+    doGrow(inout s);
+  }
+Dafny program verifier did not attempt verification

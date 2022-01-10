@@ -1,0 +1,69 @@
+// CacheImpl.i.dfy
+module CacheImpl {
+  class MutCache {
+    var cache: MM.ResizingHashMap<Node>
+    ghost var Repr: set<object>
+    method DebugAccumulate() returns (acc: DebugAccumulator.DebugAccumulator)
+    {
+      acc := DebugAccumulator.EmptyAccumulator();
+      var a: DebugAccumulator.AccRec := new DebugAccumulator.AccRec(cache.Count, "Node");
+      acc := DebugAccumulator.AccPut(acc, "cache", a);
+    }
+    constructor ()
+    {
+      cache := new MM.ResizingHashMap<Node>(128);
+      new;
+    }
+    method GetOpt(ref: BT.G.Reference) returns (node: Option<Node>)
+    {
+      node := cache.Get(ref);
+    }
+    protected function method Count(): (c: uint64)
+      reads this, Repr
+    {
+      cache.Count
+    }
+    method Insert(ref: BT.G.Reference, node: Node)
+      modifies Repr
+    {
+      cache.Insert(ref, node);
+    }
+    method Remove(ref: BT.G.Reference)
+      modifies Repr
+    {
+      cache.Remove(ref);
+    }
+    method MoveAndReplace(oldref: BT.G.Reference, newref: BT.G.Reference, node: Node)
+      modifies Repr
+    {
+      var oldnodeOpt: Option<Node> := cache.Get(oldref);
+      var oldnode: Node := oldnodeOpt.value;
+      cache.Insert(newref, oldnode);
+      cache.Insert(oldref, node);
+    }
+    method Overwrite(ref: BT.G.Reference, node: Node)
+      modifies Repr
+    {
+      cache.Insert(ref, node);
+    }
+    method UpdateNodeSlot(ghost ref: BT.G.Reference, node: Node, slot: uint64, bucket: MutBucket, childref: BT.G.Reference)
+      modifies Repr
+    {
+      node.UpdateSlot(slot, bucket, childref);
+    }
+    method SplitParent(ref: BT.G.Reference, slot: uint64, pivot: Key, left_childref: BT.G.Reference, right_childref: BT.G.Reference)
+      modifies Repr
+    {
+      var nodeOpt: Option<Node> := GetOpt(ref);
+      var node: Node := nodeOpt.value;
+      node.SplitParent(slot, pivot, left_childref, right_childref);
+    }
+    method InsertKeyValue(ref: BT.G.Reference, key: Key, msg: Message)
+      modifies Repr
+    {
+      var nodeOpt: Option<Node> := GetOpt(ref);
+      var node: Node := nodeOpt.value;
+      node.InsertKeyValue(key, msg);
+    }
+  }
+}

@@ -1,0 +1,4 @@
+// HandleReadResponseModel.i.dfy
+module HandleReadResponseModel {
+}
+Dafny program verifier did not attempt verification

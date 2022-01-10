@@ -1,0 +1,58 @@
+// StateSectorImpl.i.dfy
+module StateSectorImpl {
+  datatype Sector = SectorNode(node: Node) | SectorSuperblock(superblock: SectorType.Superblock) | SectorIndirectionTable(indirectionTable: IT.IndirectionTable) {
+    method Free()
+      requires this.SectorNode? ==> node.Inv()
+      decreases this
+    {
+      match this {
+        case SectorNode(node) =>
+          {
+            var _ := FreeNode(node);
+          }
+        case SectorSuperblock(_v1) =>
+          {
+          }
+        case SectorIndirectionTable(indirectionTable) =>
+          {
+            indirectionTable.Free();
+          }
+      }
+    }
+  }
+  predicate WFSector(sector: Sector)
+    decreases sector
+  {
+    (sector.SectorNode? ==>
+      sector.node.Inv()) &&
+    (sector.SectorIndirectionTable? ==>
+      sector.indirectionTable.Inv()) &&
+    (sector.SectorSuperblock? ==>
+      JC.WFSuperblock(sector.superblock))
+  }
+  predicate Inv(sector: Sector)
+    decreases sector
+  {
+    WFSector(sector) &&
+    (sector.SectorNode? ==>
+      BT.WFNode(sector.node.I())) &&
+    (sector.SectorIndirectionTable? ==>
+      BC.WFCompleteIndirectionTable(sector.indirectionTable.I())) &&
+    (sector.SectorSuperblock? ==>
+      JC.WFSuperblock(sector.superblock))
+  }
+  function ISector(sector: Sector): SectorType.Sector
+    requires WFSector(sector)
+    decreases sector
+  {
+    match sector {
+      case SectorNode(node) =>
+        SectorType.SectorNode(node.I())
+      case SectorSuperblock(superblock) =>
+        SectorType.SectorSuperblock(superblock)
+      case SectorIndirectionTable(indirectionTable) =>
+        SectorType.SectorIndirectionTable(indirectionTable.I())
+    }
+  }
+}
+Dafny program verifier did not attempt verification

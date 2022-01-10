@@ -1,0 +1,338 @@
+// PackedStringArray.i.dfy
+module PackedStringArray {
+  type Key = LexOrder.Element
+  datatype Psa = Psa(offsets: seq<uint32>, data: seq<NativeTypes.byte>)
+  class DynamicPsa {
+    var nstrings: uint64
+    var offsets: array<uint32>
+    var data: array<byte>
+    ghost var Repr: set<object>
+    function method toPsa(): Psa
+      reads this, this.Repr
+    {
+      if 0 == nstrings then
+        EmptyPsa()
+      else
+        Psa(offsets[..nstrings], data[..offsets[nstrings - 1]])
+    }
+    method TotalLength() returns (result: uint64)
+    {
+      if nstrings == 0 {
+        result := 0;
+      } else {
+        result := offsets[nstrings - 1] as uint64;
+      }
+    }
+    function method weight(): uint64
+      reads this, this.Repr
+    {
+      4 * nstrings + if nstrings == 0 then 0 else offsets[nstrings - 1] as uint64
+    }
+    method CanAppendWORealloc(str: Key) returns (result: bool)
+    {
+      var tl: uint64 := TotalLength();
+      result := nstrings < offsets.Length as uint64 && nstrings < 4294967296 - 1 && tl + |str| as uint64 <= data.Length as uint64;
+    }
+    method append(str: Key)
+      modifies this.Repr
+    {
+      var start: uint32 := if nstrings == 0 then 0 else offsets[nstrings - 1];
+      offsets[nstrings] := start + |str| as uint32;
+      CopySeqIntoArray(str, 0, data, start as uint64, |str| as uint64);
+      nstrings := nstrings + 1;
+    }
+    method realloc_offsets(new_offsets_len: uint64)
+      modifies this.Repr
+    {
+      var new_offsets: array<uint32> := new uint32[new_offsets_len];
+      CopyArrayIntoDifferentArray(offsets, 0, new_offsets, 0, nstrings);
+      offsets := new_offsets;
+    }
+    method realloc_data(new_data_len: uint64)
+      modifies this.Repr
+    {
+      var data_len: uint32 := if 0 == nstrings then 0 else offsets[nstrings - 1];
+      var new_data: array<byte> := new byte[new_data_len];
+      CopyArrayIntoDifferentArray(data, 0, new_data, 0, data_len as uint64);
+      data := new_data;
+    }
+    method realloc_to_accomodate(str: Key)
+      modifies this.Repr
+    {
+      if nstrings == offsets.Length as uint64 {
+        if 2147483648 <= nstrings {
+          realloc_offsets(4294967295);
+        } else {
+          realloc_offsets(2 * nstrings + 1);
+        }
+      }
+      var data_len: uint32 := if nstrings == 0 then 0 else offsets[nstrings - 1];
+      var new_len: uint64 := data_len as uint64 + |str| as uint64;
+      if data.Length as uint64 < new_len {
+        if 4294967296 <= 2 * new_len {
+          realloc_data(4294967295);
+        } else {
+          realloc_data(2 * new_len);
+        }
+      }
+    }
+    method Append(str: Key)
+      modifies this.Repr
+    {
+      realloc_to_accomodate(str);
+      append(str);
+    }
+    method appendSeq(strs: seq<Key>)
+      modifies this, this.Repr
+    {
+      var i: uint64 := 0;
+      while i < |strs| as uint64
+      {
+        append(strs[i]);
+        i := i + 1;
+      }
+    }
+    method realloc_to_accomodate_seq(strs: seq<Key>)
+      modifies this.Repr
+    {
+      if offsets.Length as uint64 < nstrings as uint64 + seq_length(strs) as uint64 {
+        realloc_offsets(nstrings as uint64 + seq_length(strs) as uint64);
+      }
+      var total_len: uint64 := if nstrings == 0 then 0 else offsets[nstrings - 1] as uint64;
+      var i: uint64 := 0;
+      while i < seq_length(strs) as uint64
+        modifies {}
+      {
+        total_len := total_len + |seq_get(strs, i)| as uint64;
+        i := i + 1;
+      }
+      if data.Length as uint64 < total_len {
+        realloc_data(total_len);
+      }
+    }
+    method AppendSeq(strs: seq<Key>)
+      modifies this, this.Repr
+    {
+      realloc_to_accomodate_seq(strs);
+      var i: uint64 := 0;
+      while i < seq_length(strs) as uint64
+      {
+        append(seq_get(strs, i));
+        i := i + 1;
+      }
+    }
+    method Prefix(newlen: uint64)
+      modifies this
+    {
+      nstrings := newlen;
+    }
+    constructor PreSized(num_strings: uint32, total_len: uint32)
+    {
+      nstrings := 0;
+      offsets := new uint32[num_strings];
+      data := new byte[total_len];
+    }
+    constructor FromSeq(strs: seq<Key>)
+    {
+      nstrings := 0;
+      offsets := new uint32[|strs| as uint64];
+      var total_len: uint64 := psaSeqTotalLength(strs);
+      data := new byte[total_len];
+      new;
+      appendSeq(strs);
+    }
+  }
+  function method psaNumStrings(psa: Psa): uint64
+  {
+    |psa.offsets| as uint64
+  }
+  function method psaTotalLength(psa: Psa): uint64
+  {
+    |psa.data| as uint64
+  }
+  function method psaStart(psa: Psa, i: uint64): (start: uint32)
+  {
+    if i == 0 then
+      0
+    else
+       psa.offsets[i - 1]
+  }
+  function method psaEnd(psa: Psa, i: uint64): (end: uint32)
+  {
+    ghost var _: bool := if i > 0 then  false else false;
+    psa.offsets[i]
+  }
+  function method psaElement(psa: Psa, i: uint64): Key
+  {
+    psa.data[psaStart(psa, i) .. psaEnd(psa, i)]
+  }
+  function method EmptyPsa(): (result: Psa)
+  {
+    Psa([], [])
+  }
+  function method SizeOfPsaUint64(psa: Psa): uint64
+  {
+    4 + 4 * |psa.offsets| as uint64 + |psa.data| as uint64
+  }
+  method {:timeLimitMultiplier 3}  CheckIsSorted(s: seq<uint32>) returns (b: bool)
+  {
+    var i: uint64 := 1;
+    if |s| < 2 {
+      return true;
+    }
+    while i < |s| as uint64
+    {
+      if s[i - 1] > s[i] {
+        return false;
+      }
+      i := i + 1;
+    }
+    return true;
+  }
+  function method FirstElement(psa: Psa): Key
+  {
+    psaElement(psa, 0)
+  }
+  function method LastElement(psa: Psa): Key
+  {
+    psaElement(psa, |psa.offsets| as uint64 - 1)
+  }
+  method SubtractConstant(nums: seq<uint32>, subtrahend: uint32) returns (result: seq<uint32>)
+  {
+    var arr: array<uint32> := newArrayFill(|nums| as uint64, 0);
+    var i: uint64 := 0;
+    while i < |nums| as uint64
+    {
+      arr[i] := nums[i] - subtrahend;
+      i := i + 1;
+    }
+    result := arr[..];
+  }
+  method SubOffsets(offsets: seq<uint32>, from: uint64, to: uint64)
+      returns (result: seq<uint32>)
+  {
+    var suboffsets: seq<uint32> := offsets[from .. to];
+    if from == 0 {
+      result := suboffsets;
+    } else {
+      result := SubtractConstant(suboffsets, offsets[from - 1]);
+    }
+  }
+  method PsaSubSeq(psa: Psa, from: uint64, to: uint64)
+      returns (result: Psa)
+  {
+    if from == to {
+      result := EmptyPsa();
+    } else {
+      var dataStart: uint32 := psaStart(psa, from);
+      var dataEnd: uint32 := psaEnd(psa, to - 1);
+      var newoffsets: seq<uint32> := SubOffsets(psa.offsets, from, to);
+      result := Psa(newoffsets, psa.data[dataStart .. dataEnd]);
+    }
+  }
+  method PsaPrefix(psa: Psa, to: uint64) returns (result: Psa)
+  {
+    result := PsaSubSeq(psa, 0, to);
+  }
+  method PsaSuffix(psa: Psa, from: uint64) returns (result: Psa)
+  {
+    result := PsaSubSeq(psa, from, psaNumStrings(psa));
+  }
+  method PsaCanAppend(psa: Psa, key: Key) returns (result: bool)
+  {
+    result := |psa.offsets| as uint64 < 4294967296 - 1 && |psa.data| as uint64 + |key| as uint64 < 4294967296;
+  }
+  method psaSeqTotalLength(strs: seq<Key>) returns (len: uint64)
+  {
+    var curlen: uint64 := 0;
+    var i: uint64 := 0;
+    while i < |strs| as uint64
+    {
+      curlen := curlen + |strs[i]| as uint64;
+      i := i + 1;
+    }
+    len := curlen;
+  }
+  method LargestLte(psa: Psa, key: Key) returns (result: int64)
+  {
+    var lo: int64 := 0;
+    var hi: int64 := psaNumStrings(psa) as int64;
+    while lo < hi
+    {
+      var mid: int64 := (lo + hi) / 2;
+      var t: int32 := LexOrderImpl.cmp(psaElement(psa, mid as uint64), key);
+      if t <= 0 {
+        lo := mid + 1;
+      } else {
+        hi := mid;
+      }
+    }
+    result := hi - 1;
+  }
+  method {:timeLimitMultiplier 3}  BinarySearchIndexOfFirstKeyGtePivot(psa: Psa, key: UpperLexOrder.Element) returns (idx: uint64)
+  {
+    var lo: uint64 := 0;
+    var hi: uint64 := psaNumStrings(psa) + 1;
+    while lo + 1 < hi
+    {
+      var mid: uint64 := (lo + hi) / 2;
+      var c: int32 := UpperLexOrderImpl.cmp(key, UpperLexOrder.Element(psaElement(psa, mid - 1)));
+      if c > 0 {
+        lo := mid;
+      } else {
+        hi := mid;
+      }
+    }
+    return lo;
+  }
+  method BinarySearchIndexOfFirstKeyGte(psa: Psa, key: Key) returns (idx: uint64)
+  {
+    var lo: uint64 := 0;
+    var hi: uint64 := psaNumStrings(psa) + 1;
+    while lo + 1 < hi
+    {
+      var mid: uint64 := (lo + hi) / 2;
+      var c: int32 := LexOrderImpl.cmp(key, psaElement(psa, mid - 1));
+      if c > 0 {
+        lo := mid;
+      } else {
+        hi := mid;
+      }
+    }
+    return lo;
+  }
+  method BinarySearchIndexOfFirstKeyGt(psa: Psa, key: Key) returns (idx: uint64)
+  {
+    var lo: uint64 := 0;
+    var hi: uint64 := psaNumStrings(psa) + 1;
+    while lo + 1 < hi
+    {
+      var mid: uint64 := (lo + hi) / 2;
+      var c: int32 := LexOrderImpl.cmp(key, psaElement(psa, mid - 1));
+      if c >= 0 {
+        lo := mid;
+      } else {
+        hi := mid;
+      }
+    }
+    return lo;
+  }
+  method FromSeq(strs: seq<Key>) returns (psa: Psa)
+  {
+    var dpsa: DynamicPsa := new DynamicPsa.FromSeq(strs);
+    psa := dpsa.toPsa();
+  }
+  method ToSeq(psa: Psa) returns (strs: seq<seq<NativeTypes.byte>>)
+  {
+    var nstrings: uint64 := psaNumStrings(psa);
+    var astrs: array<seq<byte>> := new seq<byte>[nstrings];
+    var i: uint64 := 0;
+    while i < nstrings
+    {
+      astrs[i] := psaElement(psa, i);
+      i := i + 1;
+    }
+    strs := astrs[..];
+  }
+}
+Dafny program verifier did not attempt verification

@@ -1,0 +1,480 @@
+// CoordinationImpl.i.dfy
+module CoordinationImpl {
+  lemma jcNoOp(s: Full, s': Full, vop: VOp)
+    requires s.jc.WF()
+    requires s.jc == s'.jc
+    requires vop.StatesInternalOp? || vop.JournalInternalOp? || (vop.AdvanceOp? && vop.uiop.NoOp? && s.jc.status.StatusReady? && vop.replay)
+    ensures JC.Next(s.jc.I(), s'.jc.I(), JournalDisk.NoDiskOp, vop)
+    decreases s, s', vop
+  {
+    if vop.AdvanceOp? {
+      assert JC.Replay(s.jc.I(), s'.jc.I(), JournalDisk.NoDiskOp, vop);
+      assert JC.NextStep(s.jc.I(), s'.jc.I(), JournalDisk.NoDiskOp, vop, JC.ReplayStep);
+    } else {
+      assert JC.NoOp(s.jc.I(), s'.jc.I(), JournalDisk.NoDiskOp, vop);
+      assert JC.NextStep(s.jc.I(), s'.jc.I(), JournalDisk.NoDiskOp, vop, JC.NoOpStep);
+    }
+  }
+  lemma bcNoOp(s: Full, s': Full, vop: VOp)
+    requires s.bc.W()
+    requires s.bc == s'.bc
+    requires vop.StatesInternalOp? || vop.JournalInternalOp? || vop.PushSyncOp? || vop.PopSyncOp?
+    ensures BBC.Next(s.bc.I(), s'.bc.I(), BlockDisk.NoDiskOp, vop)
+    decreases s, s', vop
+  {
+    assert BC.NoOp(s.bc.I(), s'.bc.I(), BlockDisk.NoDiskOp, vop);
+    assert BC.NextStep(s.bc.I(), s'.bc.I(), BlockDisk.NoDiskOp, vop, BC.NoOpStep);
+    assert BBC.NextStep(s.bc.I(), s'.bc.I(), BlockDisk.NoDiskOp, vop, BBC.BlockCacheMoveStep(BC.NoOpStep));
+  }
+  lemma noop(s: Full)
+    requires s.W()
+    ensures M.Next(s.I(), s.I(), UI.NoOp, D.NoDiskOp)
+    decreases s
+  {
+    jcNoOp(s, s, StatesInternalOp);
+    bcNoOp(s, s, StatesInternalOp);
+    assert BJC.NextStep(s.I(), s.I(), UI.NoOp, IDiskOp(D.NoDiskOp), StatesInternalOp);
+  }
+  method pushSync(inout old_s: Full) returns (id: uint64, s: Full)
+    requires old_s.Inv()
+    ensures s.WF()
+    ensures M.Next(old_s.I(), s.I(), if id == 0 then UI.NoOp else UI.PushSyncOp(id as int), D.NoDiskOp)
+    decreases old_s
+  {
+    s := old_s;
+    var _inout_tmp_0: Committer;
+    id, _inout_tmp_0 := s.jc.pushSync(inout s.jc);
+    s := s.(jc := _inout_tmp_0);
+    ghost var uiop: Op := if id == 0 then UI.NoOp else UI.PushSyncOp(id as int);
+    ghost var vop: VOp := if id == 0 then JournalInternalOp else PushSyncOp(id as int);
+    bcNoOp(old_s, s, vop);
+    assert BJC.NextStep(old_s.I(), s.I(), uiop, BJD.DiskOp(BlockDisk.NoDiskOp, JournalDisk.NoDiskOp), vop);
+    assert BJC.Next(old_s.I(), s.I(), uiop, BJD.DiskOp(BlockDisk.NoDiskOp, JournalDisk.NoDiskOp));
+    assert M.Next(old_s.I(), s.I(), if id == 0 then UI.NoOp else UI.PushSyncOp(id as int), D.NoDiskOp);
+  }
+  method receiveLoc(inout old_s: Variables, loc: DiskLayout.Location) returns (s: Variables)
+    requires old_s.WFBCVars()
+    requires DiskLayout.ValidIndirectionTableLocation(loc)
+    requires old_s.Unready?
+    ensures s.WFBCVars()
+    ensures BBC.Next(old_s.I(), s.I(), BlockDisk.NoDiskOp, SendPersistentLocOp(loc))
+    decreases old_s, loc
+  {
+    s := old_s;
+    var Unready() := s;
+    s := Variables.Loading(loc, None);
+    assert BC.ReceiveLoc(old_s.I(), s.I(), BlockDisk.NoDiskOp, SendPersistentLocOp(loc));
+    assert BC.NextStep(old_s.I(), s.I(), BlockDisk.NoDiskOp, SendPersistentLocOp(loc), BC.ReceiveLocStep);
+    assert BBC.NextStep(old_s.I(), s.I(), BlockDisk.NoDiskOp, SendPersistentLocOp(loc), BBC.BlockCacheMoveStep(BC.ReceiveLocStep));
+  }
+  method initialization(inout old_s: Full, io: DiskIOHandler) returns (s: Full)
+    requires old_s.Inv()
+    requires io.initialized()
+    modifies io
+    ensures s.WF()
+    ensures M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)))
+    decreases old_s, io
+  {
+    s := old_s;
+    if s.jc.status.StatusLoadingSuperblock? {
+      if s.jc.superblock1.SuperblockSuccess? && s.jc.superblock2.SuperblockSuccess? {
+        var _inout_tmp_0: Committer;
+        _inout_tmp_0 := s.jc.finishLoadingSuperblockPhase(inout s.jc);
+        s := s.(jc := _inout_tmp_0);
+        var loc: Location := s.jc.superblock.indirectionTableLoc;
+        var _inout_tmp_1: Variables;
+        _inout_tmp_1 := receiveLoc(inout s.bc, loc);
+        s := s.(bc := _inout_tmp_1);
+        assert BJC.NextStep(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))), SendPersistentLocOp(loc));
+        assert BJC.Next(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))));
+        assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+      } else if s.jc.superblock1Read.None? && s.jc.superblock1.SuperblockUnfinished? {
+        var _inout_tmp_2: Committer;
+        _inout_tmp_2 := s.jc.pageInSuperblockReq(inout s.jc, io, 0);
+        s := s.(jc := _inout_tmp_2);
+        bcNoOp(old_s, s, JournalInternalOp);
+        assert BJC.NextStep(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))), JournalInternalOp);
+        assert BJC.Next(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))));
+        assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+      } else if s.jc.superblock2Read.None? && s.jc.superblock2.SuperblockUnfinished? {
+        var _inout_tmp_3: Committer;
+        _inout_tmp_3 := s.jc.pageInSuperblockReq(inout s.jc, io, 1);
+        s := s.(jc := _inout_tmp_3);
+        bcNoOp(old_s, s, JournalInternalOp);
+        assert BJC.NextStep(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))), JournalInternalOp);
+        assert BJC.Next(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))));
+        assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+      } else {
+        print "initialization: doing nothing, superblock reads out\n";
+        noop(s);
+      }
+    } else if s.jc.status.StatusLoadingOther? {
+      var _inout_tmp_4: Committer;
+      _inout_tmp_4 := s.jc.tryFinishLoadingOtherPhase(inout s.jc, io);
+      s := s.(jc := _inout_tmp_4);
+      bcNoOp(old_s, s, JournalInternalOp);
+      assert BJC.NextStep(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))), JournalInternalOp);
+      assert BJC.Next(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))));
+      assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+    } else if s.bc.Loading? && s.bc.indirectionTableRead.None? {
+      var _inout_tmp_5: ImplVariables;
+      _inout_tmp_5 := IOImpl.PageInIndirectionTableReq(inout s.bc, io);
+      s := s.(bc := _inout_tmp_5);
+      jcNoOp(old_s, s, StatesInternalOp);
+      assert BJC.NextStep(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))), StatesInternalOp);
+      assert BJC.Next(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))));
+      assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+    } else if s.bc.Ready? {
+      var isEmpty: bool := s.jc.isReplayEmpty();
+      if !isEmpty {
+        var je: JournalEntry := s.jc.journalist.replayJournalTop();
+        var success: bool, _inout_tmp_7: ImplVariables := InsertImpl.insert(inout s.bc, io, je.key, je.value, true);
+        s := s.(bc := _inout_tmp_7);
+        if success {
+          var _inout_tmp_6: Committer;
+          _inout_tmp_6 := s.jc.journalReplayOne(inout s.jc, je);
+          s := s.(jc := _inout_tmp_6);
+        }
+        ghost var g: bool := true;
+        if g && !success && old_s.jc == s.jc {
+          ghost var vop: VOp;
+          if BBC.Next(old_s.bc.I(), s.bc.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp) {
+            vop := StatesInternalOp;
+          } else {
+            vop := AdvanceOp(UI.NoOp, true);
+          }
+          jcNoOp(old_s, s, vop);
+          assert BJC.NextStep(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))), vop);
+          assert BJC.Next(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))));
+          assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+        } else {
+          ghost var vop: VOp := AdvanceOp(UI.PutOp(je.key, je.value), true);
+          assert BJC.NextStep(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))), vop);
+          assert BJC.Next(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))));
+          assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+        }
+      } else {
+        print "initialization: doing nothing, no replay journal\n";
+        noop(s);
+      }
+    } else {
+      print "initialization: doing nothing\n";
+      noop(s);
+    }
+  }
+  method doSync(inout old_s: Full, io: DiskIOHandler, graphSync: bool)
+      returns (wait: bool, s: Full)
+    requires old_s.Inv()
+    requires io.initialized()
+    requires old_s.bc.Ready?
+    requires old_s.jc.Inv()
+    requires old_s.jc.status.StatusReady?
+    requires old_s.jc.journalist.I().replayJournal == []
+    modifies io
+    ensures s.WF()
+    ensures M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)))
+    decreases old_s, io, graphSync
+  {
+    s := old_s;
+    wait := false;
+    if s.jc.isFrozen {
+      if s.jc.frozenLoc.Some? {
+        var _inout_tmp_0: Committer;
+        wait, _inout_tmp_0 := s.jc.tryAdvanceLocation(inout s.jc, io);
+        s := s.(jc := _inout_tmp_0);
+        ghost var uiop: Op := UI.NoOp;
+        ghost var vop: VOp := JournalInternalOp;
+        bcNoOp(old_s, s, vop);
+        assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+        assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+        assert M.Next(old_s.I(), s.I(), uiop, diskOp(IIO(io)));
+      } else {
+        var froze: bool, wait0: bool, _inout_tmp_1: ImplVariables := SyncImpl.sync(inout s.bc, io);
+        s := s.(bc := _inout_tmp_1);
+        wait := wait0;
+        assert froze == false;
+        ghost var uiop: Op := UI.NoOp;
+        assert BBC.Next(old_s.bc.I(), s.bc.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp) || BBC.Next(old_s.bc.I(), s.bc.I(), IDiskOp(diskOp(IIO(io))).bdop, AdvanceOp(UI.NoOp, true));
+        if BBC.Next(old_s.bc.I(), s.bc.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp) {
+          ghost var vop: VOp := StatesInternalOp;
+          jcNoOp(old_s, s, vop);
+          assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+          assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+          assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+        } else {
+          ghost var vop: VOp := AdvanceOp(UI.NoOp, true);
+          assert BBC.Next(old_s.bc.I(), s.bc.I(), IDiskOp(diskOp(IIO(io))).bdop, vop);
+          jcNoOp(old_s, s, vop);
+          assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+          assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+          assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+        }
+      }
+    } else if s.jc.superblockWrite.Some? {
+      wait := true;
+      noop(s);
+    } else {
+      if graphSync {
+        var froze: bool, wait0: bool, _inout_tmp_3: ImplVariables := SyncImpl.sync(inout s.bc, io);
+        s := s.(bc := _inout_tmp_3);
+        wait := wait0;
+        if froze {
+          var _inout_tmp_2: Committer;
+          _inout_tmp_2 := s.jc.freeze(inout s.jc);
+          s := s.(jc := _inout_tmp_2);
+          assert BJC.NextStep(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))), FreezeOp);
+          assert BJC.Next(old_s.I(), s.I(), UI.NoOp, IDiskOp(diskOp(IIO(io))));
+          assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+        } else {
+          ghost var uiop: Op := UI.NoOp;
+          if BBC.Next(old_s.bc.I(), s.bc.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp) {
+            ghost var vop: VOp := StatesInternalOp;
+            jcNoOp(old_s, s, vop);
+            assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+            assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+            assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+          } else {
+            ghost var vop: VOp := AdvanceOp(UI.NoOp, true);
+            assert BBC.Next(old_s.bc.I(), s.bc.I(), IDiskOp(diskOp(IIO(io))).bdop, vop);
+            jcNoOp(old_s, s, vop);
+            assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+            assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+            assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+          }
+          assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+        }
+      } else {
+        var _inout_tmp_4: Committer;
+        wait, _inout_tmp_4 := s.jc.tryAdvanceLog(inout s.jc, io);
+        s := s.(jc := _inout_tmp_4);
+        ghost var uiop: Op := UI.NoOp;
+        ghost var vop: VOp := JournalInternalOp;
+        bcNoOp(old_s, s, vop);
+        assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+        assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+        assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+      }
+    }
+  }
+  method getCommitterSyncState(s: Full, id: uint64) returns (res: Option<JC.SyncReqStatus>)
+    requires s.Inv()
+    ensures var contents: map<uint64, JC.SyncReqStatus> := s.jc.syncReqs.contents; (if id in contents then res == Some(contents[id]) else res.None?) && (res.Some? <==> id in s.jc.syncReqs.contents)
+    decreases s, id
+  {
+    res := LinearMutableMap.Get(s.jc.syncReqs, id);
+  }
+  function method isCommitterStatusReady(s: Full): bool
+    requires s.WF()
+    decreases s
+  {
+    s.jc.status.StatusReady?
+  }
+  function method isInitialized(s: Full): (b: bool)
+    requires s.Inv()
+    decreases s
+  {
+    if s.bc.Ready? && isCommitterStatusReady(s) then
+      s.jc.isReplayEmpty()
+    else
+      false
+  }
+  method popSync(inout old_s: Full, io: DiskIOHandler, id: uint64, graphSync: bool)
+      returns (success: bool, wait: bool, s: Full)
+    requires old_s.Inv()
+    requires io.initialized()
+    modifies io
+    ensures s.WF()
+    ensures M.Next(old_s.I(), s.I(), if success then UI.PopSyncOp(id as int) else UI.NoOp, diskOp(IIO(io)))
+    decreases old_s, io, id, graphSync
+  {
+    s := old_s;
+    wait := false;
+    var committerSyncState: Option<JC.SyncReqStatus> := getCommitterSyncState(s, id);
+    assert committerSyncState.Some? <==> id in s.jc.syncReqs.contents;
+    if committerSyncState == Some(JC.State1) {
+      var _inout_tmp_0: Committer;
+      _inout_tmp_0 := s.jc.popSync(inout s.jc, id);
+      s := s.(jc := _inout_tmp_0);
+      success := true;
+      ghost var uiop: Op := if success then UI.PopSyncOp(id as int) else UI.NoOp;
+      ghost var vop: VOp := if success then PopSyncOp(id as int) else JournalInternalOp;
+      bcNoOp(old_s, s, vop);
+      assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+      assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+      assert M.Next(old_s.I(), s.I(), uiop, diskOp(IIO(io)));
+    } else {
+      var isInit: bool := isInitialized(s);
+      if !isInit {
+        var _inout_tmp_1: Full;
+        _inout_tmp_1 := initialization(inout s, io);
+        s := _inout_tmp_1;
+        success := false;
+        assert M.Next(old_s.I(), s.I(), UI.NoOp, diskOp(IIO(io)));
+      } else {
+        var _inout_tmp_2: Full;
+        wait, _inout_tmp_2 := doSync(inout s, io, graphSync);
+        s := _inout_tmp_2;
+        success := false;
+      }
+    }
+  }
+  method query(inout old_s: Full, io: DiskIOHandler, key: Key)
+      returns (result: Option<Value>, s: Full)
+    requires old_s.Inv()
+    requires io.initialized()
+    modifies io
+    ensures s.WF()
+    ensures M.Next(old_s.I(), s.I(), if result.Some? then UI.GetOp(key, result.value) else UI.NoOp, diskOp(IIO(io)))
+    decreases old_s, io, key
+  {
+    s := old_s;
+    var is_init: bool := isInitialized(s);
+    if !is_init {
+      var _inout_tmp_0: Full;
+      _inout_tmp_0 := initialization(inout s, io);
+      s := _inout_tmp_0;
+      result := None;
+    } else {
+      var _inout_tmp_1: ImplVariables;
+      result, _inout_tmp_1 := QueryImpl.query(inout s.bc, io, key);
+      s := s.(bc := _inout_tmp_1);
+      if result.Some? {
+        ghost var uiop: Op := UI.GetOp(key, result.value);
+        ghost var vop: VOp := AdvanceOp(uiop, false);
+        assert JC.Advance(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+        assert JC.NextStep(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop, JC.AdvanceStep);
+        assert JC.Next(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+        assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+        assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+      } else {
+        ghost var uiop: Op := UI.NoOp;
+        if BBC.Next(old_s.bc.I(), s.bc.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp) {
+          ghost var vop: VOp := StatesInternalOp;
+          assert JC.NoOp(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+          assert JC.NextStep(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop, JC.NoOpStep);
+          assert JC.Next(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+          assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+          assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+        } else {
+          ghost var vop: VOp := AdvanceOp(uiop, true);
+          assert JC.Replay(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+          assert JC.NextStep(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop, JC.ReplayStep);
+          assert JC.Next(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+          assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+          assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+        }
+      }
+    }
+  }
+  method succ(inout old_s: Full, io: DiskIOHandler, start: UI.RangeStart, maxToFind: uint64)
+      returns (result: Option<UI.SuccResultList>, s: Full)
+    requires maxToFind >= 1
+    requires old_s.Inv()
+    requires io.initialized()
+    modifies io
+    ensures s.WF()
+    ensures M.Next(old_s.I(), s.I(), if result.Some? then UI.SuccOp(start, result.value.results, result.value.end) else UI.NoOp, diskOp(IIO(io)))
+    decreases old_s, io, start, maxToFind
+  {
+    s := old_s;
+    var is_init: bool := isInitialized(s);
+    if !is_init {
+      var _inout_tmp_0: Full;
+      _inout_tmp_0 := initialization(inout s, io);
+      s := _inout_tmp_0;
+      result := None;
+    } else {
+      var _inout_tmp_1: ImplVariables;
+      result, _inout_tmp_1 := SuccImpl.doSucc(inout s.bc, io, start, maxToFind);
+      s := s.(bc := _inout_tmp_1);
+      if result.Some? {
+        ghost var uiop: Op := UI.SuccOp(start, result.value.results, result.value.end);
+        ghost var vop: VOp := AdvanceOp(uiop, false);
+        assert JC.Advance(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+        assert JC.NextStep(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop, JC.AdvanceStep);
+        assert JC.Next(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+        assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+        assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+      } else {
+        ghost var uiop: Op := UI.NoOp;
+        if BBC.Next(old_s.bc.I(), s.bc.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp) {
+          ghost var vop: VOp := StatesInternalOp;
+          assert JC.NoOp(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+          assert JC.NextStep(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop, JC.NoOpStep);
+          assert JC.Next(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+          assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+          assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+        } else {
+          ghost var vop: VOp := AdvanceOp(uiop, true);
+          assert JC.Replay(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+          assert JC.NextStep(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop, JC.ReplayStep);
+          assert JC.Next(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+          assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+          assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+        }
+      }
+    }
+  }
+  function method canJournalistAppend(s: Full, key: Key, value: Value): (b: bool)
+    requires s.WF()
+    decreases s, key, value
+  {
+    s.jc.journalist.canAppend(Journal.JournalInsert(key, value))
+  }
+  method insert(inout old_s: Full, io: DiskIOHandler, key: Key, value: Value)
+      returns (success: bool, s: Full)
+    requires old_s.Inv()
+    requires io.initialized()
+    modifies io
+    ensures s.WF()
+    ensures M.Next(old_s.I(), s.I(), if success then UI.PutOp(key, value) else UI.NoOp, diskOp(IIO(io)))
+    decreases old_s, io, key, value
+  {
+    s := old_s;
+    var is_init: bool := isInitialized(s);
+    if !is_init {
+      var _inout_tmp_0: Full;
+      _inout_tmp_0 := initialization(inout s, io);
+      s := _inout_tmp_0;
+      success := false;
+    } else {
+      var can_append: bool := canJournalistAppend(s, key, value);
+      if can_append {
+        var _inout_tmp_2: ImplVariables;
+        success, _inout_tmp_2 := InsertImpl.insert(inout s.bc, io, key, value, false);
+        s := s.(bc := _inout_tmp_2);
+        if success {
+          var _inout_tmp_1: Committer;
+          _inout_tmp_1 := s.jc.journalAppend(inout s.jc, key, value);
+          s := s.(jc := _inout_tmp_1);
+          ghost var uiop: Op := UI.PutOp(key, value);
+          ghost var vop: VOp := AdvanceOp(uiop, false);
+          assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+          assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+        } else {
+          ghost var uiop: Op := UI.NoOp;
+          if BBC.Next(old_s.bc.I(), s.bc.I(), IDiskOp(diskOp(IIO(io))).bdop, StatesInternalOp) {
+            ghost var vop: VOp := StatesInternalOp;
+            assert JC.NoOp(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+            assert JC.NextStep(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop, JC.NoOpStep);
+            assert JC.Next(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+            assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+            assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+          } else {
+            ghost var vop: VOp := AdvanceOp(uiop, true);
+            assert JC.Replay(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+            assert JC.NextStep(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop, JC.ReplayStep);
+            assert JC.Next(old_s.jc.I(), s.jc.I(), JournalDisk.NoDiskOp, vop);
+            assert BJC.NextStep(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))), vop);
+            assert BJC.Next(old_s.I(), s.I(), uiop, IDiskOp(diskOp(IIO(io))));
+          }
+        }
+      } else {
+        var wait: bool, _inout_tmp_3: Full := doSync(inout s, io, true);
+        s := _inout_tmp_3;
+        success := false;
+      }
+    }
+  }
+}
+Dafny program verifier did not attempt verification

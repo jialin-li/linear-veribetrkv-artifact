@@ -1,0 +1,45 @@
+  var Length: int  // immutable
+  method {:timeLimitMultiplier 3} queryIterate(inout s: ImplVariables, key: Key, msg: Message, ref: BT.G.Reference, io: DiskIOHandler, counter: uint64, ghost lookup: seq<BT.G.ReadOp>)
+      returns (res: Option<Value>)
+    modifies io
+  {
+    if counter == 0 {
+      res := None;
+    } else {
+      var incache: bool := s.cache.InCache(ref);
+      if !incache {
+        PageInNodeReqOrMakeRoom(inout s, io, ref);
+        res := None;
+      } else {
+        var pivots: Pivots.PivotTable, children: Option<seq<BT.G.Reference>> := s.cache.GetNodeInfo(ref);
+        var boundedkey: bool := ComputeBoundedKey(pivots, key);
+        if !boundedkey {
+          res := None;
+        } else {
+          s.lru.Use(ref);
+          var r: uint64 := Pivots.ComputeRoute(pivots, key);
+          var kmtMsg: Option<Message> := s.cache.GetMessage(ref, r, key);
+          var newmsg: Message := if kmtMsg.Some? then ValueMessage.Merge(msg, kmtMsg.value) else msg;
+          if newmsg.Define? {
+            res := Some(newmsg.value);
+          } else {
+            if children.Some? {
+              res := queryIterate(inout s, key, newmsg, children.value[r], io, counter - 1, newlookup);
+            } else {
+              res := Some(ValueType.DefaultValue());
+            }
+          }
+        }
+      }
+    }
+  }
+  method query(inout s: ImplVariables, io: DiskIOHandler, key: Key)
+      returns (res: Option<Value>)
+    modifies io
+  {
+    var ref: Reference := BT.G.Root();
+    var msg: Message := ValueMessage.IdentityMessage();
+    var counter: uint64 := 40;
+    res := queryIterate(inout s, key, msg, ref, io, counter, []);
+  }
+Dafny program verifier did not attempt verification

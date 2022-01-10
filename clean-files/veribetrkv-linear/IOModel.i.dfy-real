@@ -1,0 +1,5 @@
+// IOModel.i.dfy
+module IOModel {
+  type Sector = SSI.Sector
+}
+Dafny program verifier did not attempt verification

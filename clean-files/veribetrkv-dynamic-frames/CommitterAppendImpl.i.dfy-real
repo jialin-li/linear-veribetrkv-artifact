@@ -1,0 +1,9 @@
+// CommitterAppendImpl.i.dfy
+module CommitterAppendImpl {
+  method JournalAppend(k: ImplConstants, cm: Committer, key: Key, value: Value)
+    modifies cm.Repr
+  {
+    var je: JournalEntry := JournalInsert(key, value);
+    cm.journalist.append(je);
+  }
+}

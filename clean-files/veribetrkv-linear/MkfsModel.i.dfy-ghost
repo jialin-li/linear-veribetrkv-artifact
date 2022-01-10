@@ -1,0 +1,88 @@
+// MkfsModel.i.dfy
+module MkfsModel {
+  predicate InitDiskContents(diskContents: map<uint64, seq<byte>>)
+    decreases diskContents
+  {
+    true &&
+    ghost var s1addr: Addr := Superblock1Location().addr; true && ghost var s2addr: uint64 := Superblock2Location().addr; true && ghost var indirectionTableAddr: uint64 := IndirectionTable1Addr(); true && ghost var nodeAddr: uint64 := NodeBlockSizeUint64() * MinNodeBlockIndexUint64(); diskContents.Keys == {s1addr, s2addr, indirectionTableAddr, nodeAddr} && ghost var bSuperblock: seq<byte> := diskContents[s1addr]; bSuperblock == diskContents[s2addr] && ghost var bIndirectionTable: seq<byte> := diskContents[indirectionTableAddr]; true && ghost var bNode: seq<byte> := diskContents[nodeAddr]; |bIndirectionTable| <= IndirectionTableBlockSize() as int && |bNode| <= NodeBlockSize() as int && |bSuperblock| == 4096 && ghost var indirectionTableLoc: Location := Location(indirectionTableAddr, |bIndirectionTable| as uint64); true && ghost var nodeLoc: Location := Location(nodeAddr, |bNode| as uint64); Marshalling.parseCheckedSector(bIndirectionTable) == Some(SectorIndirectionTable(IndirectionTable(map[BT.G.Root() := nodeLoc], map[BT.G.Root() := []]))) && Marshalling.parseCheckedSector(bNode) == Some(SectorNode(BT.EmptyNode())) && Marshalling.parseCheckedSector(bSuperblock) == Some(SectorSuperblock(Superblock(0, 0, 0, indirectionTableLoc)))
+  }
+  lemma InitialStateSatisfiesSystemInit(s: ADM.Variables, diskContents: map<uint64, seq<byte>>)
+    requires ADM.M.Init(s.machine)
+    requires ADM.D.Init(s.disk)
+    requires InitDiskContents(diskContents)
+    requires ADM.BlocksWrittenInByteSeq(diskContents, s.disk.contents)
+    ensures ADM.Init(s)
+    decreases s, diskContents
+  {
+    Marshalling.reveal_parseCheckedSector();
+    ghost var s1addr: Addr := Superblock1Location().addr;
+    ghost var s2addr: Addr := Superblock1Location().addr;
+    ghost var indirectionTableAddr: Addr := IndirectionTable1Addr();
+    ghost var nodeAddr: uint64 := NodeBlockSizeUint64() * MinNodeBlockIndexUint64();
+    ghost var bSuperblock: seq<byte> := diskContents[s1addr];
+    ghost var bIndirectionTable: seq<byte> := diskContents[indirectionTableAddr];
+    ghost var bNode: seq<byte> := diskContents[nodeAddr];
+    ghost var indirectionTableLoc: Location := Location(indirectionTableAddr, |bIndirectionTable| as uint64);
+    ghost var nodeLoc: Location := Location(nodeAddr, |bNode| as uint64);
+    assert ValidNodeLocation(nodeLoc) by {
+      ValidNodeAddrMul(MinNodeBlockIndexUint64());
+    }
+    assert ValidIndirectionTableLocation(indirectionTableLoc);
+    assert ValidNodeBytes(bNode) && NodeOfBytes(bNode) == BT.EmptyNode() by {
+      reveal_SectorOfBytes();
+      reveal_ValidCheckedBytes();
+      reveal_Parse();
+      D.reveal_ChecksumChecksOut();
+    }
+    assert ValidSuperblockBytes(bSuperblock) && SuperblockOfBytes(bSuperblock) == Superblock(0, 0, 0, indirectionTableLoc) by {
+      reveal_SectorOfBytes();
+      reveal_ValidCheckedBytes();
+      reveal_Parse();
+      D.reveal_ChecksumChecksOut();
+    }
+    assert ValidIndirectionTableBytes(bIndirectionTable) && IndirectionTableOfBytes(bIndirectionTable) == IndirectionTable(map[BT.G.Root() := nodeLoc], map[BT.G.Root() := []]) by {
+      reveal_SectorOfBytes();
+      reveal_ValidCheckedBytes();
+      reveal_Parse();
+      D.reveal_ChecksumChecksOut();
+    }
+    assert atLoc(Superblock1Location(), s.disk.contents) == bSuperblock by {
+      reveal_atLoc();
+    }
+    assert atLoc(Superblock2Location(), s.disk.contents) == bSuperblock by {
+      reveal_atLoc();
+    }
+    assert atLocWithWrites(nodeLoc, s.disk.contents, s.disk.reqWrites) == bNode by {
+      reveal_atLoc();
+      withEmptyWrites(s.disk.contents, nodeLoc);
+    }
+    assert atLocWithWrites(indirectionTableLoc, s.disk.contents, s.disk.reqWrites) == bIndirectionTable by {
+      reveal_atLoc();
+      withEmptyWrites(s.disk.contents, indirectionTableLoc);
+    }
+    ghost var blockDisk: BlockDisk.Variables := IBlockDisk(s.disk);
+    ghost var journalDisk: JournalDisk.Variables := IJournalDisk(s.disk);
+    ghost var betreeCache: BetreeCache.Variables := s.machine.bc;
+    ghost var journalCache: JournalCache.Variables := s.machine.jc;
+    ghost var betreeSystem: AsyncSectorDiskModelVariables<BC.Variables, D.Variables> := AsyncSectorDiskModelTypes.AsyncSectorDiskModelVariables(betreeCache, blockDisk);
+    ghost var journalSystem: AsyncSectorDiskModelVariables<M.Variables, D.Variables> := AsyncSectorDiskModelTypes.AsyncSectorDiskModelVariables(journalCache, journalDisk);
+    ghost var betreeJournalSystem: Variables := BetreeJournalSystem.Variables(betreeSystem, journalSystem);
+    assert BlockSystem.Init(betreeSystem, indirectionTableLoc);
+    BlockSystem.InitGraphsValue(betreeSystem, indirectionTableLoc);
+    JournalSystem.InitJournals(journalSystem, indirectionTableLoc);
+    assert BetreeSystem.Init(betreeSystem, indirectionTableLoc);
+    assert JournalSystem.Init(journalSystem, indirectionTableLoc);
+    JournalSystem.InitImpliesInv(journalSystem, indirectionTableLoc);
+    BetreeSystem.InitImpliesInv(betreeSystem, indirectionTableLoc);
+    ghost var pivotBt: Variables := BT.Variables(BI.Variables(imap[BT.G.Root() := BT.EmptyNode()]));
+    BT.InitImpliesInv(pivotBt);
+    PivotBetree_Refines_Map.RefinesInit(pivotBt);
+    assert BetreeSystem.BetreeDisk(betreeSystem)[indirectionTableLoc] == pivotBt;
+    ghost var cview: CompositeView.Variables := BetreeJournalSystem.I(betreeJournalSystem);
+    assert StatesViewMap.Init(cview.tsm, indirectionTableLoc);
+    assert JournalView.Init(cview.jc, indirectionTableLoc);
+    assert BetreeJournalSystem.InitWithLoc(betreeJournalSystem, indirectionTableLoc);
+    assert BetreeJournalSystem.Init(betreeJournalSystem);
+  }
+}
+Dafny program verifier did not attempt verification

@@ -1,0 +1,18 @@
+// PivotsLib.i.dfy
+module PivotsLib {
+  type PivotTable = seq<Key>
+  method ComputeRoute(pt: PivotTable, key: Key) returns (i: uint64)
+  {
+    var j: int64 := KeyspaceImpl.ComputeLargestLte(pt, key);
+    i := (j + 1) as uint64;
+  }
+  method ComputeCutoffForLeft(pivots: PivotTable, pivot: Key) returns (i: uint64)
+  {
+    var j: int64 := KeyspaceImpl.ComputeLargestLt(pivots, pivot);
+    i := (j + 1) as uint64;
+  }
+  method ComputeCutoffForRight(pivots: PivotTable, pivot: Key) returns (i: uint64)
+  {
+    i := ComputeRoute(pivots, pivot);
+  }
+}

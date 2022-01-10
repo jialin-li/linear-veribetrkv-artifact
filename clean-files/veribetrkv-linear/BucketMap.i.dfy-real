@@ -1,0 +1,5 @@
+// BucketMap.i.dfy
+module BucketMaps {
+  type BucketMap = map<Key, Message>
+}
+Dafny program verifier did not attempt verification

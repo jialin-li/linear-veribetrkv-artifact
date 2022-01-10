@@ -1,0 +1,89 @@
+// MarshallingModel.i.dfy
+module MarshallingModel {
+  type Reference = BC.Reference
+  type Sector = SectorType.Sector
+  type Node = BT.G.Node
+  lemma  WeightBucketListLteSize(v: V, buckets: seq<Bucket>)
+    requires v.VArray?
+    requires Marshalling.valToBuckets.requires(v.a)
+    requires Marshalling.valToBuckets(v.a) == Some(buckets)
+    ensures WeightBucketList(buckets) <= SizeOfV(v)
+    decreases |v.a|
+  {
+    if |buckets| == 0 {
+      reveal_WeightBucketList();
+    } else {
+      ghost var prebuckets: seq<Bucket> := DropLast(buckets);
+      ghost var prev: V := VArray(DropLast(v.a));
+      ghost var lastbucket: Bucket := Last(buckets);
+      ghost var lastv: V := Last(v.a);
+      assert WeightBucket(lastbucket) <= SizeOfV(lastv) by {
+        ghost var pkv: Pkv := PackedKVMarshalling.fromVal(lastv).value;
+        PackedKVMarshalling.SizeOfVPackedKVIsBucketWeight(pkv);
+        PackedKVMarshalling.uniqueMarshalling(lastv);
+      }
+      calc <= {
+        WeightBucketList(buckets);
+      <=
+        {
+          reveal_WeightBucketList();
+        }
+        WeightBucketList(prebuckets) + WeightBucket(lastbucket);
+      <=
+        {
+          WeightBucketListLteSize(prev, prebuckets);
+        }
+        SizeOfV(prev) + WeightBucket(lastbucket);
+      <=
+        {
+          lemma_SeqSum_prefix(prev.a, lastv);
+          assert v.a == prev.a + [lastv];
+        }
+        SizeOfV(v);
+      }
+    }
+  }
+  lemma  SizeOfVTupleElem_le_SizeOfV(v: V, i: int)
+    requires v.VTuple?
+    requires 0 <= i < |v.t|
+    ensures SizeOfV(v.t[i]) <= SizeOfV(v)
+    decreases |v.t|
+  {
+    lemma_SeqSum_prefix(DropLast(v.t), Last(v.t));
+    assert DropLast(v.t) + [Last(v.t)] == v.t;
+    if i < |v.t| - 1 {
+      SizeOfVTupleElem_le_SizeOfV(VTuple(DropLast(v.t)), i);
+    }
+  }
+  lemma  SizeOfVArrayElem_le_SizeOfV(v: V, i: int)
+    requires v.VArray?
+    requires 0 <= i < |v.a|
+    ensures SizeOfV(v.a[i]) <= SizeOfV(v)
+    decreases |v.a|
+  {
+    lemma_SeqSum_prefix(DropLast(v.a), Last(v.a));
+    assert DropLast(v.a) + [Last(v.a)] == v.a;
+    if i < |v.a| - 1 {
+      SizeOfVArrayElem_le_SizeOfV(VArray(DropLast(v.a)), i);
+    }
+  }
+  lemma  SizeOfVArrayElem_le_SizeOfV_forall(v: V)
+    requires v.VArray?
+    ensures forall i: int {:trigger v.a[i]} | 0 <= i < |v.a| :: SizeOfV(v.a[i]) <= SizeOfV(v)
+    decreases v
+  {
+    forall i: int {:trigger v.a[i]} | 0 <= i < |v.a|
+      ensures SizeOfV(v.a[i]) <= SizeOfV(v)
+    {
+      SizeOfVArrayElem_le_SizeOfV(v, i);
+    }
+  }
+  function method refToVal(ref: Reference): (v: V)
+    ensures ValidVal(v)
+    ensures SizeOfV(v) == 8
+    decreases ref
+  {
+    VUint64(ref)
+  }
+}
+Dafny program verifier did not attempt verification

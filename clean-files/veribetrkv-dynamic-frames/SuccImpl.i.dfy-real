@@ -1,0 +1,60 @@
+// SuccImpl.i.dfy
+module SuccImpl {
+  method getPathInternal(k: ImplConstants, s: ImplVariables, io: DiskIOHandler, key: Key, acc: seq<MutBucket>, start: UI.RangeStart, upTo: Option<Key>, maxToFind: uint64, ref: BT.G.Reference, counter: uint64, node: Node)
+      returns (res: Option<UI.SuccResultList>)
+    modifies s.Repr(), io
+  {
+    var r: uint64 := Pivots.ComputeRoute(node.pivotTable, key);
+    var bucket: BucketImpl.MutBucket := node.buckets[r];
+    var acc': seq<MutBucket> := acc + [bucket];
+    var upTo': Option<Key>;
+    if r == |node.pivotTable| as uint64 {
+      upTo' := upTo;
+    } else {
+      var ub: Key := node.pivotTable[r];
+      if upTo.Some? {
+        var c: int32 := cmp(upTo.value, ub);
+        var k: Key := if c < 0 then upTo.value else ub;
+        upTo' := Some(k);
+      } else {
+        upTo' := Some(ub);
+      }
+    }
+    if node.children.Some? {
+      if counter == 0 {
+        print "getPathInternal failure: count ran down\n";
+        res := None;
+      } else {
+        res := getPath(k, s, io, key, acc', start, upTo', maxToFind, node.children.value[r], counter - 1);
+      }
+    } else {
+      var res0: UI.SuccResultList := BucketSuccessorLoopImpl.GetSuccessorInBucketStack(acc', maxToFind, start, upTo');
+      res := Some(res0);
+    }
+  }
+  method getPath(k: ImplConstants, s: ImplVariables, io: DiskIOHandler, key: Key, acc: seq<MutBucket>, start: UI.RangeStart, upTo: Option<Key>, maxToFind: uint64, ref: BT.G.Reference, counter: uint64)
+      returns (res: Option<UI.SuccResultList>)
+    modifies s.Repr(), io
+  {
+    var nodeOpt: Option<Node> := s.cache.GetOpt(ref);
+    if nodeOpt.Some? {
+      var node: Node := nodeOpt.value;
+      res := getPathInternal(k, s, io, key, acc, start, upTo, maxToFind, ref, counter, node);
+      s.lru.Use(ref);
+    } else {
+      if s.cache.Count() + |s.outstandingBlockReads| as uint64 <= MaxCacheSizeUint64() - 1 {
+        PageInNodeReq(k, s, io, ref);
+      } else {
+        print "getPath: Can't page in anything because cache is full\n";
+      }
+      res := None;
+    }
+  }
+  method doSucc(k: ImplConstants, s: ImplVariables, io: DiskIOHandler, start: UI.RangeStart, maxToFind: uint64)
+      returns (res: Option<UI.SuccResultList>)
+    modifies io, s.Repr()
+  {
+    var startKey: seq<NativeTypes.byte> := if start.NegativeInf? then [] else start.key;
+    res := getPath(k, s, io, startKey, [], start, None, maxToFind, BT.G.Root(), 40);
+  }
+}

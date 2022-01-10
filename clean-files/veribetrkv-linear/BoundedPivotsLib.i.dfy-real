@@ -1,0 +1,104 @@
+// BoundedPivotsLib.i.dfy
+module BoundedPivotsLib {
+  type Element = Keyspace.Element
+  type PivotTable = seq<Element>
+  method ComputeContainsAllKeys(pt: PivotTable) returns (b: bool)
+  {
+    var len: uint64 := |pt| as uint64;
+    var b1: int32 := KeyspaceImpl.cmp(pt[0], Keyspace.Element([]));
+    var b2: int32 := KeyspaceImpl.cmp(pt[len - 1], Keyspace.Max_Element);
+    return b1 == 0 && b2 == 0;
+  }
+  method ComputeBoundedKey(pt: PivotTable, key: Key) returns (b: bool)
+  {
+    var pivot: Element := Keyspace.Element(key);
+    var c1: int32 := KeyspaceImpl.cmp(pt[0], pivot);
+    var c2: int32 := KeyspaceImpl.cmp(pivot, pt[|pt| as uint64 - 1]);
+    return c1 <= 0 && c2 < 0;
+  }
+  method ComputeValidLeftCutOffKey(pt: PivotTable, key: Key) returns (b: bool)
+  {
+    var pivot: Element := Keyspace.Element(key);
+    var c1: int32 := KeyspaceImpl.cmp(pt[0], pivot);
+    var c2: int32 := KeyspaceImpl.cmp(pivot, pt[|pt| as uint64 - 1]);
+    return c1 < 0 && c2 <= 0;
+  }
+  function method PivotSize(e: Element): (n: uint64)
+  {
+    if e.Element? then
+      |e.e| as uint64
+    else
+      0
+  }
+  method ComputeRoute(pt: PivotTable, key: Key) returns (i: uint64)
+  {
+    var j: int64 := KeyspaceImpl.ComputeLargestLte(pt, Keyspace.Element(key));
+    i := j as uint64;
+  }
+  function method InitPivotTable(): (pt: PivotTable)
+  {
+    var pt: seq<Element> := [Keyspace.Element([]), Keyspace.Max_Element];
+    pt
+  }
+  method ComputeGetKey(pt: PivotTable, idx: uint64) returns (k: Key)
+  {
+    k := pt[idx].e;
+  }
+  method ComputePivotInsertable(pt: PivotTable, idx: uint64, key: Key)
+      returns (b: bool)
+  {
+    var len: uint64 := |pt| as uint64;
+    if idx > len {
+      return false;
+    }
+    var pivot: Element := Keyspace.Element(key);
+    if idx == 0 {
+      var c: int32 := KeyspaceImpl.cmp(pivot, pt[0]);
+      if c >= 0 {
+        return false;
+      }
+    }
+    if idx == len {
+      var c: int32 := KeyspaceImpl.cmp(pt[len - 1], pivot);
+      if c >= 0 {
+        return false;
+      }
+    }
+    if idx > 0 && idx < len {
+      var c1: int32 := KeyspaceImpl.cmp(pt[idx - 1], pivot);
+      var c2: int32 := KeyspaceImpl.cmp(pivot, pt[idx]);
+      if c1 >= 0 || c2 >= 0 {
+        return false;
+      }
+    }
+    var bounded: bool := ComputeBoundedKey(pt, key);
+    if bounded {
+      var r: uint64 := ComputeRoute(pt, key);
+      if r + 1 != idx {
+        return false;
+      }
+    }
+    return true;
+  }
+  method ComputeCutoffForLeft(pt: PivotTable, pivot: Key) returns (i: uint64)
+  {
+    var j: int64 := KeyspaceImpl.ComputeLargestLt(pt, Keyspace.Element(pivot));
+    i := j as uint64;
+  }
+  method ComputeSplitLeft(pt: PivotTable, pivot: Key, cLeft: uint64)
+      returns (ret: PivotTable)
+  {
+    ret := pt[..cLeft + 1] + [Keyspace.Element(pivot)];
+  }
+  method ComputeCutoffForRight(pt: PivotTable, pivot: Key) returns (i: uint64)
+  {
+    var j: uint64 := ComputeRoute(pt, pivot);
+    i := j as uint64;
+  }
+  method ComputeSplitRight(pt: PivotTable, pivot: Key, cRight: uint64)
+      returns (ret: PivotTable)
+  {
+    ret := [Keyspace.Element(pivot)] + pt[cRight + 1..];
+  }
+}
+Dafny program verifier did not attempt verification

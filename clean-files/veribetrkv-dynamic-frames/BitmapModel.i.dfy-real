@@ -1,0 +1,4 @@
+// BitmapModel.i.dfy
+module BitmapModel {
+  type BitmapModelT = seq<bool>
+}

@@ -1,0 +1,217 @@
+  var Length: int  // immutable
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): bool
+    reads reads(x0, x1, x2, x3, x4)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): set<object?>
+    reads reads(x0, x1, x2, x3, x4)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): bool
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function {:opaque} {:fuel 0, 0} ProcessGenerator(g: Generator, maxToFind: int, upTo: Option<Key>, results: seq<UI.SuccResult>): UI.SuccResultList
+    requires WF(g)
+    requires |results| < maxToFind
+    decreases decreaser(g)
+  {
+    lemmaDecreaserDecreases(g);
+    ghost var next: IteratorOutput := GenLeft(g);
+    if next.Next? && (upTo.Some? ==> Keyspace.lt(next.key, upTo.value)) then
+      ghost var v: Value := Merge(next.msg, DefineDefault()).value;
+      if v != DefaultValue() then
+        ghost var results': seq<UI.SuccResult> := results + [UI.SuccResult(next.key, v)];
+        if |results'| < maxToFind then
+          ghost var g': Generator := GenPop(g);
+          ProcessGenerator(g', maxToFind, upTo, results')
+        else
+          UI.SuccResultList(results', UI.EInclusive(next.key))
+      else
+        ghost var g': Generator := GenPop(g); ProcessGenerator(g', maxToFind, upTo, results)
+    else
+      UI.SuccResultList(results, if upTo.Some? then UI.EExclusive(upTo.value) else UI.PositiveInf)
+  }
+  function {:opaque} {:fuel 0, 0} GetSuccessorInBucketStack(buckets: seq<Bucket>, maxToFind: int, start: UI.RangeStart, upTo: Option<Key>): UI.SuccResultList
+    requires |buckets| >= 1
+    requires maxToFind >= 1
+    requires forall i: int | 0 <= i < |buckets| :: WFBucket(buckets[i])
+  {
+    ghost var g: Generator := GenFromBucketStackWithLowerBound(buckets, start);
+    ProcessGenerator(g, maxToFind, upTo, [])
+  }
+  predicate ProcessInv(bucket: BucketMap, left: BucketMap, right: BucketMap, g: Generator, maxToFind: int, upTo: Option<Key>, results: seq<UI.SuccResult>)
+  {
+    results == SortedSeqOfKeyValueMap(KeyValueMapOfBucket(left)) &&
+    YieldsSortedBucket(g, right) &&
+    (forall l: Element, r: Element | l in left && r in right :: 
+      Keyspace.lt(l, r)) &&
+    (upTo.Some? ==>
+      forall l: Element | l in left :: 
+        Keyspace.lt(l, upTo.value)) &&
+    MapUnionPreferA(left, right) == bucket &&
+    |results| < maxToFind
+  }
+  function maximumKey(b: set<Key>): Option<Key>
+  {
+    ghost var m: Option<Element> := Lexicographic_Byte_Order.maximumOpt(b);
+    if m.Some? then
+      assert |m.value| <= KeyType.MaxLen() as nat;
+      ghost var k: Key := m.value;
+      Some(k)
+    else
+      None
+  }
+  lemma {:timeLimitMultiplier 3} ProcessGeneratorResult(bucket: BucketMap, left: BucketMap, right: BucketMap, g: Generator, maxToFind: int, upTo: Option<Key>, results: seq<UI.SuccResult>)
+    requires ProcessInv(bucket, left, right, g, maxToFind, upTo, results)
+    ensures ghost var r: UI.SuccResultList := ProcessGenerator(g, maxToFind, upTo, results); r.results == SortedSeqOfKeyValueMap(KeyValueMapOfBucket(ClampEnd(bucket, r.end))) && (upTo.Some? ==> !MS.UpperBound(upTo.value, r.end)) && (|r.results| == 0 ==> r.end == if upTo.Some? then UI.EExclusive(upTo.value) else UI.PositiveInf)
+    decreases decreaser(g)
+  {
+    reveal_ProcessGenerator();
+    reveal_SortedSeqOfKeyValueMap();
+    reveal_KeyValueMapOfBucket();
+    reveal_ClampEnd();
+    lemmaDecreaserDecreases(g);
+    ghost var next: IteratorOutput := GenLeft(g);
+    GenLeftIsMinimum(g);
+    if next.Next? && (upTo.Some? ==> Keyspace.lt(next.key, upTo.value)) {
+      ghost var v: Value := Merge(next.msg, DefineDefault()).value;
+      GenPopIsRemove(g);
+      ghost var left': BucketMap := left[next.key := next.msg];
+      ghost var right': map<Key, Message> := MapRemove1(right, next.key);
+      if v != DefaultValue() {
+        ghost var results': seq<UI.SuccResult> := results + [UI.SuccResult(next.key, v)];
+        assert forall k: Element | k in KeyValueMapOfBucket(left').Keys :: Keyspace.lte(k, next.key);
+        assert next.key in KeyValueMapOfBucket(left').Keys;
+        assert next.key == maximumKey(KeyValueMapOfBucket(left').Keys).value;
+        assert MapRemove1(KeyValueMapOfBucket(left'), next.key) == KeyValueMapOfBucket(left);
+        ghost var m: map<Key, Value> := KeyValueMapOfBucket(left');
+        calc == {
+          results';
+        ==
+          {
+            assert MapRemove1(m, next.key) == MapRemove1(m, Lexicographic_Byte_Order.maximumOpt(m.Keys).value);
+          }
+          SortedSeqOfKeyValueMap(KeyValueMapOfBucket(left'));
+        }
+        if |results'| < maxToFind {
+          ghost var g': Generator := GenPop(g);
+          ProcessGeneratorResult(bucket, left', right', g', maxToFind, upTo, results');
+        } else {
+          assert left' == ClampEnd(bucket, UI.EInclusive(next.key));
+        }
+      } else {
+        assert KeyValueMapOfBucket(left') == KeyValueMapOfBucket(left);
+        assert results == SortedSeqOfKeyValueMap(KeyValueMapOfBucket(left'));
+        ghost var g': Generator := GenPop(g);
+        ProcessGeneratorResult(bucket, left', right', g', maxToFind, upTo, results);
+      }
+    } else {
+      ghost var ce: BucketMap := ClampEnd(bucket, if upTo.Some? then UI.EExclusive(upTo.value) else UI.PositiveInf);
+      assert left == ce;
+    }
+  }
+  lemma InRangeImpliesNonEmpty(start: UI.RangeStart, key: Key, end: UI.RangeEnd)
+    requires MS.InRange(start, key, end)
+    ensures MS.NonEmptyRange(start, end)
+  {
+    assert start.SInclusive? ==> Keyspace.lte(start.key, key);
+    assert start.SExclusive? ==> Keyspace.lt(start.key, key);
+    assert end.EInclusive? ==> Keyspace.lte(key, end.key);
+    assert end.EExclusive? ==> Keyspace.lt(key, end.key);
+  }
+  lemma {:timeLimitMultiplier 3} GetSuccessorInBucketStackResult(buckets: seq<Bucket>, maxToFind: int, start: UI.RangeStart, upTo: Option<Key>)
+    requires |buckets| >= 1
+    requires maxToFind >= 1
+    requires BucketListWellMarshalled(buckets)
+    requires forall i: int | 0 <= i < |buckets| :: WFBucket(buckets[i])
+    requires upTo.Some? && (start.SInclusive? || start.SExclusive?) ==> Keyspace.lt(start.key, upTo.value)
+    ensures ghost var r: UI.SuccResultList := GetSuccessorInBucketStack(buckets, maxToFind, start, upTo); r.results == SortedSeqOfKeyValueMap(KeyValueMapOfBucket(ClampRange(ComposeSeq(MapsOfBucketList(buckets)), start, r.end))) && (upTo.Some? ==> !MS.UpperBound(upTo.value, r.end)) && MS.NonEmptyRange(start, r.end)
+  {
+    reveal_GetSuccessorInBucketStack();
+    ghost var g: Generator := GenFromBucketStackWithLowerBound(buckets, start);
+    GenFromBucketStackWithLowerBoundYieldsComposeSeq(buckets, start);
+    ghost var bucket: BucketMap := BucketOf(g);
+    reveal_KeyValueMapOfBucket();
+    reveal_SortedSeqOfKeyValueMap();
+    ProcessGeneratorResult(bucket, map[], bucket, g, maxToFind, upTo, []);
+    ghost var r: UI.SuccResultList := ProcessGenerator(g, maxToFind, upTo, []);
+    assert r == GetSuccessorInBucketStack(buckets, maxToFind, start, upTo);
+    reveal_ClampRange();
+    reveal_ClampStart();
+    reveal_ClampEnd();
+    assert ClampRange(ComposeSeq(MapsOfBucketList(buckets)), start, r.end) == ClampEnd(ClampStart(ComposeSeq(MapsOfBucketList(buckets)), start), r.end);
+    if |r.results| == 0 {
+      assert MS.NonEmptyRange(start, r.end);
+    } else {
+      SortedSeqOfKeyValueMaps(KeyValueMapOfBucket(ClampRange(ComposeSeq(MapsOfBucketList(buckets)), start, r.end)), 0);
+      assert r.results[0].key in ClampRange(ComposeSeq(MapsOfBucketList(buckets)), start, r.end);
+      assert MS.InRange(start, r.results[0].key, r.end);
+      InRangeImpliesNonEmpty(start, r.results[0].key, r.end);
+    }
+  }
+Dafny program verifier did not attempt verification

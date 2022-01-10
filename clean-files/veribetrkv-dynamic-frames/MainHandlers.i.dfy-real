@@ -1,0 +1,47 @@
+// MainHandlers.i.dfy
+module MainHandlers refines Main {
+  type Constants = ImplConstants
+  type Variables = FullImpl.Full
+  method PrintMetadata()
+  {
+    print "metadata NodeBlockSize ", Bounds.NodeBlockSizeUint64(), "\n";
+    print "metadata MaxTotalBucketWeight ", Bounds.MaxTotalBucketWeightUint64(), "\n";
+    print "metadata MaxCacheSize ", Bounds.MaxCacheSizeUint64(), "\n";
+    print "metadata MaxNumChildren ", Bounds.MaxNumChildrenUint64(), "\n";
+    print "metadata IndirectionTableBlockSize ", Bounds.IndirectionTableBlockSizeUint64(), "\n";
+    print "metadata MinNodeBlockIndex ", Bounds.MinNodeBlockIndexUint64(), "\n";
+    print "metadata DiskNumJournalBlocks ", Bounds.DiskNumJournalBlocksUint64(), "\n";
+  }
+  method handleEvictEverything(k: Constants, hs: HeapState, io: DiskIOHandler)
+  {
+    var s: Variables := hs.s;
+    print "\nBefore\n";
+    var acc: seq<AccRec> := s.bc.DebugAccumulate();
+    DebugAccumulator.Display(acc, 0);
+    var count: uint64 := s.bc.cache.cache.Count;
+    while count > 0
+    {
+      EvictOrDealloc(k, s.bc, io);
+      count := s.bc.cache.cache.Count;
+    }
+    print "\nAfter\n";
+    acc := s.bc.DebugAccumulate();
+    DebugAccumulator.Display(acc, 0);
+  }
+  method handleCountAmassAllocations(k: Constants, hs: HeapState, io: DiskIOHandler)
+  {
+    AllocationReport.start();
+    var s: Variables := hs.s;
+    var cache: MM.ResizingHashMap<Node> := s.bc.cache.cache;
+    var iter: SimpleIterator := cache.SimpleIterStart();
+    var output: IteratorOutput<Node> := cache.SimpleIterOutput(iter);
+    while !output.Done?
+    {
+      var node: Node := output.value;
+      AllocationReport.sampleNode(0, node);
+      iter := cache.SimpleIterInc(iter);
+      output := cache.SimpleIterOutput(iter);
+    }
+    AllocationReport.stop();
+  }
+}

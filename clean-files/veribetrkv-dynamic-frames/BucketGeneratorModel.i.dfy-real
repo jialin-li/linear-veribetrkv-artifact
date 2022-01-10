@@ -1,0 +1,4 @@
+// BucketGeneratorModel.i.dfy
+module BucketGeneratorModel {
+  datatype Generator = BasicGenerator(bucket: Bucket, it: Iterator) | ComposeGenerator(top: Generator, bot: Generator, next: IteratorOutput)
+}

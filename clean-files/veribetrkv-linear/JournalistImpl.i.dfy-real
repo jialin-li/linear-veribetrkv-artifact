@@ -1,0 +1,182 @@
+// JournalistImpl.i.dfy
+module JournalistImpl {
+    reveals basic_mod, Journalist.ReplayJournal, Journalist.Iprivate, Journalist.mid, Journalist.InMemoryJournalFrozen, Journalist.end, MaxPossibleEntries, Journalist.InMemoryJournal, CorrectJournalBlockSizes, Journalist.WF, Journalist, Journalist.Inv, JournalInfo
+    reveals basic_mod, Journalist.ReplayJournal, Journalist.Iprivate, Journalist.mid, Journalist.InMemoryJournalFrozen, Journalist.end, MaxPossibleEntries, Journalist.InMemoryJournal, CorrectJournalBlockSizes, Journalist.WF, Journalist, Journalist.Inv, JournalInfo
+  datatype   JournalInfo = JournalInfo(inMemoryJournalFrozen: seq<JournalEntry>, inMemoryJournal: seq<JournalEntry>, replayJournal: seq<JournalEntry>, journalFront: Option<JournalRange>, journalBack: Option<JournalRange>, ghost writtenJournalLen: int)
+  datatype   Journalist = Journalist(journalEntries: seq<JournalEntry>, start: uint64, len1: uint64, len2: uint64, replayJournal: seq<JournalEntry>, replayIdx: uint64, journalFront: Option<seq<JournalBlock>>, journalBack: Option<seq<JournalBlock>>, writtenJournalBlocks: uint64, frozenJournalBlocks: uint64, inMemoryWeight: uint64) {
+    static method Constructor() returns (j: Journalist)
+    {
+      var jes: seq<JournalEntry> := seq_alloc_init(4096, JournalInsert([], []));
+      j := Journalist(jes, 0, 0, 0, [], 0, None, None, 0, 0, 0);
+    }
+    method hasFrozenJournal() returns (b: bool)
+    {
+      return len1 != 0;
+    }
+    method hasInMemoryJournal() returns (b: bool)
+    {
+      return len2 != 0;
+    }
+    method packageFrozenJournal(inout old_self: Journalist) returns (s: seq<byte>, self: Journalist)
+    {
+      self := old_self;
+      s := MarshallJournalEntries(self.journalEntries, self.start, self.len1, self.frozenJournalBlocks);
+      var _inout_tmp_0: uint64 := basic_mod(self.start + self.len1, seq_length(self.journalEntries));
+      self := self.(start := _inout_tmp_0);
+      var _inout_tmp_1: uint64 := 0;
+      self := self.(len1 := _inout_tmp_1);
+      var _inout_tmp_2: uint64 := self.writtenJournalBlocks + self.frozenJournalBlocks;
+      self := self.(writtenJournalBlocks := _inout_tmp_2);
+      var _inout_tmp_3: uint64 := 0;
+      self := self.(frozenJournalBlocks := _inout_tmp_3);
+    }
+    method packageInMemoryJournal(inout old_self: Journalist) returns (s: seq<byte>, self: Journalist)
+    {
+      self := old_self;
+      var numBlocks: uint64 := (self.inMemoryWeight + 4064 - 1) / 4064;
+      s := MarshallJournalEntries(self.journalEntries, self.start, self.len2, numBlocks);
+      var _inout_tmp_0: uint64 := 0;
+      self := self.(start := _inout_tmp_0);
+      var _inout_tmp_1: uint64 := 0;
+      self := self.(len2 := _inout_tmp_1);
+      var _inout_tmp_2: uint64 := 0;
+      self := self.(inMemoryWeight := _inout_tmp_2);
+      var _inout_tmp_3: uint64 := self.writtenJournalBlocks + numBlocks;
+      self := self.(writtenJournalBlocks := _inout_tmp_3);
+    }
+    method getWrittenJournalLen() returns (len: uint64)
+    {
+      return writtenJournalBlocks;
+    }
+    method setWrittenJournalLen(inout old_self: Journalist, len: uint64) returns (self: Journalist)
+    {
+      self := old_self;
+      var _inout_tmp_0: uint64 := len;
+      self := self.(writtenJournalBlocks := _inout_tmp_0);
+      var _inout_tmp_1: uint64 := 0;
+      self := self.(frozenJournalBlocks := _inout_tmp_1);
+    }
+    method updateWrittenJournalLen(inout old_self: Journalist, len: uint64) returns (self: Journalist)
+    {
+      self := old_self;
+      var _inout_tmp_0: uint64 := len;
+      self := self.(writtenJournalBlocks := _inout_tmp_0);
+    }
+    method freeze(inout old_self: Journalist) returns (self: Journalist)
+    {
+      self := old_self;
+      var _inout_tmp_0: uint64 := self.len1 + self.len2;
+      self := self.(len1 := _inout_tmp_0);
+      var _inout_tmp_1: uint64 := 0;
+      self := self.(len2 := _inout_tmp_1);
+      var _inout_tmp_2: uint64 := self.frozenJournalBlocks + (self.inMemoryWeight + 4064 - 1) / 4064;
+      self := self.(frozenJournalBlocks := _inout_tmp_2);
+      var _inout_tmp_3: uint64 := 0;
+      self := self.(inMemoryWeight := _inout_tmp_3);
+    }
+    function method canAppend(je: JournalEntry): (b: bool)
+    {
+      4064 * (writtenJournalBlocks + frozenJournalBlocks) + inMemoryWeight + WeightJournalEntryUint64(je) + (if len2 == 0 then 8 else 0) <= 4064 * NumJournalBlocks()
+    }
+    method reallocJournalEntries(je: JournalEntry, newLen: uint64) returns (newjes: seq<JournalEntry>)
+    {
+      newjes := seq_alloc_init(newLen, JournalInsert([], []));
+      var oldLen: uint64 := seq_length(journalEntries);
+      var _inout_tmp_0: seq<JournalEntry>;
+      _inout_tmp_0 := SeqCopy(journalEntries, inout newjes, start, oldLen, 0);
+      newjes := _inout_tmp_0;
+      var _inout_tmp_1: seq<JournalEntry>;
+      _inout_tmp_1 := SeqCopy(journalEntries, inout newjes, 0, start, oldLen - start);
+      newjes := _inout_tmp_1;
+      var _inout_tmp_2: seq<JournalEntry>;
+      _inout_tmp_2 := mut_seq_set(inout newjes, oldLen, je);
+      newjes := _inout_tmp_2;
+    }
+    method append(inout old_self: Journalist, je: JournalEntry) returns (self: Journalist)
+    {
+      self := old_self;
+      var len: uint64 := seq_length(self.journalEntries);
+      if self.len1 + self.len2 < len {
+        var idx: uint64 := basic_mod(self.start + self.len1 + self.len2, seq_length(self.journalEntries));
+        var _inout_tmp_0: seq<JournalEntry>;
+        _inout_tmp_0 := mut_seq_set(inout self.journalEntries, idx, je);
+        self := self.(journalEntries := _inout_tmp_0);
+      } else {
+        var newLen: uint64 := len * 2;
+        var newjes: seq<JournalEntry> := self.reallocJournalEntries(je, newLen);
+        var Journalist(oldjes: seq<JournalEntry>, start: uint64, len1: uint64, len2: uint64, replayJournal: seq<JournalEntry>, replayIdx: uint64, journalFront: Option<seq<JournalBlock>>, journalBack: Option<seq<JournalBlock>>, writtenJournalBlocks: uint64, frozenJournalBlocks: uint64, inMemoryWeight: uint64) := self;
+        self := Journalist(newjes, 0, len1, len2, replayJournal, replayIdx, journalFront, journalBack, writtenJournalBlocks, frozenJournalBlocks, inMemoryWeight);
+        var _: () := seq_free(oldjes);
+      }
+      var _inout_tmp_1: uint64 := self.inMemoryWeight + WeightJournalEntryUint64(je) + if self.len2 == 0 then 8 else 0;
+      self := self.(inMemoryWeight := _inout_tmp_1);
+      var _inout_tmp_2: uint64 := self.len2 + 1;
+      self := self.(len2 := _inout_tmp_2);
+    }
+    function method isReplayEmpty(): (b: bool)
+    {
+      replayIdx == |replayJournal| as uint64
+    }
+    function method replayJournalTop(): (je: JournalEntry)
+    {
+      replayJournal[replayIdx]
+    }
+    method replayJournalPop(inout old_self: Journalist) returns (self: Journalist)
+    {
+      self := old_self;
+      var _inout_tmp_0: uint64 := self.replayIdx + 1;
+      self := self.(replayIdx := _inout_tmp_0);
+    }
+    method setFront(inout old_self: Journalist, jr: JournalRange) returns (self: Journalist)
+    {
+      self := old_self;
+      var _inout_tmp_0: Option<JournalRange> := Some(jr);
+      self := self.(journalFront := _inout_tmp_0);
+    }
+    method setBack(inout old_self: Journalist, jr: JournalRange) returns (self: Journalist)
+    {
+      self := old_self;
+      var _inout_tmp_0: Option<JournalRange> := Some(jr);
+      self := self.(journalBack := _inout_tmp_0);
+    }
+    method parseJournals(inout old_self: Journalist) returns (success: bool, self: Journalist)
+    {
+      self := old_self;
+      var fullRange: seq<JournalBlock> := (if self.journalFront.Some? then self.journalFront.value else []) + if self.journalBack.Some? then self.journalBack.value else [];
+      var p: Option<seq<JournalEntry>> := JournalistParsingImpl.ParseJournalRange(fullRange);
+      if p.Some? && |p.value| as uint64 <= MaxPossibleEntries() {
+        var _inout_tmp_0: Option<seq<JournalBlock>> := None;
+        self := self.(journalFront := _inout_tmp_0);
+        var _inout_tmp_1: Option<seq<JournalBlock>> := None;
+        self := self.(journalBack := _inout_tmp_1);
+        var _inout_tmp_2: seq<JournalEntry> := p.value;
+        self := self.(replayJournal := _inout_tmp_2);
+        var _inout_tmp_3: uint64 := 0;
+        self := self.(replayIdx := _inout_tmp_3);
+        success := true;
+      } else {
+        success := false;
+      }
+    }
+    function method hasFront(): (b: bool)
+    {
+      journalFront.Some?
+    }
+    function method hasBack(): (b: bool)
+    {
+      journalBack.Some?
+    }
+  }
+  function method MaxPossibleEntries(): uint64
+  {
+    32 * 1048576
+  }
+  function method basic_mod(x: uint64, len: uint64): uint64
+  {
+    if x >= len then
+      x - len
+    else
+      x
+  }
+}
+Dafny program verifier did not attempt verification

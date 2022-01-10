@@ -1,0 +1,4 @@
+// SplitModel.i.dfy
+module SplitModel {
+}
+Dafny program verifier did not attempt verification

@@ -1,0 +1,18 @@
+  var Length: int  // immutable
+  method Free()
+  {
+    match this {
+      case SectorNode(node) =>
+        {
+          var _ := FreeNode(node);
+        }
+      case SectorSuperblock(_v1) =>
+        {
+        }
+      case SectorIndirectionTable(indirectionTable) =>
+        {
+          indirectionTable.Free();
+        }
+    }
+  }
+Dafny program verifier did not attempt verification

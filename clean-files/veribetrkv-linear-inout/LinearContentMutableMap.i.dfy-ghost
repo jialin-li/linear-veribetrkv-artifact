@@ -1,0 +1,617 @@
+  var Length: int  // immutable
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  method FreeNonEntry()
+    requires !this.Entry?
+  {
+    match this {
+      case Empty() =>
+      case Tombstone(key) =>
+    }
+  }
+  function toItem(): Item<V>
+  {
+    match this {
+      case Empty() =>
+        Base.Empty()
+      case Entry(key, value) =>
+        Base.Entry(key, value)
+      case Tombstone(key) =>
+        Base.Tombstone(key)
+    }
+  }
+  predicate Inv()
+  {
+    Inv0(this)
+  }
+  function toItems<V>(litems: lseq<lItem<V>>): (items: seq<Item<V>>)
+    ensures |items| == operator'cardinality?lseq(litems)
+  {
+    ghost var elements: seq<lItem<V>> := lseqs(litems);
+    seq(|elements|, (i: int) requires 0 <= i < |elements| => elements[i].toItem())
+  }
+  function method Uint64SlotForKey<V>(self: FixedSizeLinearHashMap<V>, key: uint64): (result: uint64)
+    requires 0 < operator'cardinality?lseq(self.storage) < 18446744073709551616
+    ensures ValidSlot(operator'cardinality?lseq(self.storage), Slot(result as nat))
+    ensures Slot(result as nat) == SlotForKey(operator'cardinality?lseq(self.storage), key)
+  {
+    var h: uint64 := hash64(key);
+    var storageLength: uint64 := lseq_length_as_uint64(self.storage);
+    h % storageLength as uint64
+  }
+  predicate FixedSizeInv<V>(self: FixedSizeLinearHashMap<V>)
+  {
+    128 <= operator'cardinality?lseq(self.storage) < 18446744073709551616 &&
+    self.count as nat < 18446744073709551616 &&
+    self.count as nat < operator'cardinality?lseq(self.storage) &&
+    |self.contents| == self.count as nat &&
+    lseq_has_all(self.storage) &&
+    SeqMatchesContentKeys(toItems(self.storage), self.contents) &&
+    EntriesMatchContentValue(toItems(self.storage), self.contents) &&
+    TombstonesMatchContentValue(toItems(self.storage), self.contents)
+  }
+  predicate IsConstructorFromSize<V>(size: nat, self: FixedSizeLinearHashMap<V>)
+  {
+    operator'cardinality?lseq(self.storage) == size &&
+    self.count == 0 &&
+    self.contents == map[] &&
+    (forall slot: Slot :: 
+      ValidSlot(operator'cardinality?lseq(self.storage), slot) ==>
+        SlotIsEmpty(toItems(self.storage), slot)) &&
+    FixedSizeInv(self)
+  }
+  method ConstructorFromSize<V>(size: uint64) returns (self: FixedSizeLinearHashMap<V>)
+    requires 128 <= size
+    ensures IsConstructorFromSize(size as nat, self)
+  {
+    var storage: lseq<lItem<V>> := lseq_alloc(size);
+    var i: uint64 := 0 as uint64;
+    while i < size
+      invariant i <= size
+      invariant size as nat == operator'cardinality?lseq(storage)
+      invariant forall j: int | 0 <= j < i as nat :: lseq_has(storage)[j]
+      invariant forall j: int | i as nat <= j < size as nat :: !lseq_has(storage)[j]
+      invariant forall slot: Slot :: ValidSlot(operator'cardinality?lseq(storage), slot) && 0 <= slot.slot < i as nat ==> SlotIsEmpty(toItems(storage), slot)
+    {
+      var item: lItem<V> := lItem.Empty();
+      lseq_give_inout(inout storage, i, item);
+      i := i + 1;
+    }
+    self := FixedSizeLinearHashMap(storage, 0, map[]);
+  }
+  lemma allNonEmptyImpliesCountEqStorageSize<V>(self: FixedSizeLinearHashMap<V>)
+    requires FixedSizeInv(self)
+    ensures (forall j: int | 0 <= j < operator'cardinality?lseq(self.storage) :: !operator'subscript?lseq(self.storage, j).Empty?) ==> self.count as int == operator'cardinality?lseq(self.storage)
+  {
+    ghost var elements: lseq<lItem<V>> := self.storage;
+    if forall j: int | 0 <= j < operator'cardinality?lseq(elements) :: !operator'subscript?lseq(elements, j).Empty? {
+      ghost var elementIndices: set<int> := set i: int | 0 <= i < operator'cardinality?lseq(elements);
+      assert IndexSetThrough(toItems(elements), operator'cardinality?lseq(elements)) == elementIndices;
+      CardinalityOfSetsOfSequenceIndices(toItems(elements), elementIndices);
+      IndexSetMatchesContents(toItems(elements), self.contents);
+    }
+  }
+  function {:opaque} {:fuel 0, 0} getEmptyWitness<V>(self: FixedSizeLinearHashMap<V>, i: uint64): (res: uint64)
+    requires FixedSizeInv(self)
+    requires 0 <= i as int <= operator'cardinality?lseq(self.storage)
+    requires forall j: int | 0 <= j < i as int :: !operator'subscript?lseq(self.storage, j).Empty?
+    requires self.count as int < operator'cardinality?lseq(self.storage)
+    ensures 0 <= res as int < operator'cardinality?lseq(self.storage)
+    ensures operator'subscript?lseq(self.storage, res as int).Empty?
+    decreases operator'cardinality?lseq(self.storage) - i as int
+  {
+    allNonEmptyImpliesCountEqStorageSize(self);
+    if operator'subscript?lseq(self.storage, i as int).Empty? then
+      i
+    else
+      getEmptyWitness(self, i + 1)
+  }
+  method {:timeLimitMultiplier 4} Probe<V>(self: FixedSizeLinearHashMap<V>, key: uint64)
+      returns (slotIdx: uint64, ghost startSlotIdx: uint64, ghost skips: uint64)
+    requires FixedSizeInv(self)
+    requires self.count as int < operator'cardinality?lseq(self.storage)
+    ensures 0 <= slotIdx as int < operator'cardinality?lseq(self.storage)
+    ensures ValidSlot(operator'cardinality?lseq(self.storage), Slot(slotIdx as nat))
+    ensures ValidSlot(operator'cardinality?lseq(self.storage), Slot(startSlotIdx as nat))
+    ensures Slot(startSlotIdx as nat) == SlotForKey(operator'cardinality?lseq(self.storage), key)
+    ensures 0 <= skips
+    ensures slotIdx as nat == KthSlotSuccessor(operator'cardinality?lseq(self.storage), Slot(startSlotIdx as nat), skips as nat).slot
+    ensures key in self.contents ==> SlotExplainsKey(toItems(self.storage), skips as nat, key)
+    ensures key !in self.contents ==> FilledWithOtherKeys(toItems(self.storage), Slot(startSlotIdx as nat), skips as nat, key) && (operator'subscript?lseq(self.storage, slotIdx as nat).Empty? || (operator'subscript?lseq(self.storage, slotIdx as nat).Tombstone? && operator'subscript?lseq(self.storage, slotIdx as nat).key == key))
+    ensures operator'subscript?lseq(self.storage, slotIdx as nat).Entry? ==> key in self.contents && key == operator'subscript?lseq(self.storage, slotIdx as nat).key
+    ensures operator'subscript?lseq(self.storage, slotIdx as nat).Empty? ==> key !in self.contents
+  {
+    slotIdx := Uint64SlotForKey(self, key);
+    startSlotIdx := slotIdx;
+    ghost var startSlot: Slot := Slot(startSlotIdx as nat);
+    ghost var viewFromStartSlot: seq<Item<V>> := View(toItems(self.storage), startSlotIdx as nat);
+    ViewsHaveConsistentCounts(toItems(self.storage), viewFromStartSlot, startSlotIdx as nat);
+    CountFilledMatchesIndexSet(toItems(self.storage));
+    IndexSetMatchesContents(toItems(self.storage), self.contents);
+    forall dist: nat | dist < operator'cardinality?lseq(self.storage)
+      ensures operator'subscript?lseq(self.storage, KthSlotSuccessor(operator'cardinality?lseq(self.storage), startSlot, dist).slot).toItem() == viewFromStartSlot[dist]
+    {
+      KthSlotSuccessorWrapsAround(operator'cardinality?lseq(self.storage), startSlot, dist);
+    }
+    skips := 0;
+    while true
+      invariant skips < operator'cardinality?lseq(self.storage) as uint64
+      invariant slotIdx < operator'cardinality?lseq(self.storage) as uint64
+      invariant operator'cardinality?lseq(self.storage) == |viewFromStartSlot|
+      invariant toItems(self.storage)[startSlotIdx..] + toItems(self.storage)[..startSlotIdx] == viewFromStartSlot
+      invariant slotIdx as nat == KthSlotSuccessor(operator'cardinality?lseq(self.storage), startSlot, skips as nat).slot
+      invariant skips < operator'cardinality?lseq(self.storage) as uint64 ==> operator'subscript?lseq(self.storage, slotIdx as nat).toItem() == viewFromStartSlot[skips]
+      invariant ValidSlot(operator'cardinality?lseq(self.storage), KthSlotSuccessor(operator'cardinality?lseq(self.storage), startSlot, skips as nat))
+      invariant FilledWithOtherKeys(toItems(self.storage), startSlot, skips as nat, key)
+      invariant CountFilled(viewFromStartSlot[..skips]) == skips as nat
+      decreases var wit: uint64 := getEmptyWitness(self, 0); if slotIdx > wit then wit as int - slotIdx as int + operator'cardinality?lseq(self.storage) else wit as int - slotIdx as int
+    {
+      ghost var skipsBefore: uint64 := skips;
+      var entry: lItem<V> := lseq_peek(self.storage, slotIdx);
+      if entry.Empty? || (entry.Tombstone? && entry.key == key) {
+        assert key in self.contents ==> SlotExplainsKey(toItems(self.storage), skips as nat, key) by {
+          reveal_SomeSkipCountExplainsKey();
+        }
+        return;
+      } else if entry.key == key {
+        assert EntryInSlotMatchesContents(toItems(self.storage), Slot(slotIdx as nat), self.contents);
+        return;
+      }
+      slotIdx := Uint64SlotSuccessorUint64(lseq_length_as_uint64(self.storage), slotIdx);
+      skips := skips + 1;
+      assert viewFromStartSlot[..skips] == viewFromStartSlot[..skipsBefore] + [viewFromStartSlot[skipsBefore]];
+      CountFilledAdditive(viewFromStartSlot[..skipsBefore], [viewFromStartSlot[skipsBefore]]);
+      if skips == operator'cardinality?lseq(self.storage) as uint64 {
+        forall
+          ensures false
+        {
+          calc == {
+            operator'cardinality?lseq(self.storage);
+          ==
+            skips as nat;
+          ==
+            CountFilled(viewFromStartSlot[..skips]);
+          ==
+            {
+              assert viewFromStartSlot[..skips] == viewFromStartSlot;
+            }
+            CountFilled(viewFromStartSlot);
+          ==
+            |self.contents|;
+          ==
+            self.count as nat;
+          <
+            operator'cardinality?lseq(self.storage);
+          }
+        }
+      }
+    }
+  }
+  method FixedSizeInsert<V>(inout self: FixedSizeLinearHashMap<V>, key: uint64, value: V)
+      returns (replaced: lOption<V>)
+  {
+    var entry: lItem<V> := lItem.Entry(key, value);
+    replaced := FixedSizeInsertEntry(inout self, entry);
+  }
+  method FixedSizeInsertEntry<V>(inout self: FixedSizeLinearHashMap<V>, entry: lItem<V>) returns (replaced: lOption<V>)
+  {
+    var slotIdx: uint64;
+    ghost var probeStartSlotIdx: uint64, probeSkips: uint64;
+    slotIdx, probeStartSlotIdx, probeSkips := Probe(self, entry.key);
+    ghost var contents: map<uint64, Option<V>> := old_self.contents[entry.key := Some(entry.value)];
+    inout ghost self.contents := contents;
+    var olditem: lItem<V> := lseq_take_inout(inout self.storage, slotIdx);
+    lseq_give_inout(inout self.storage, slotIdx, entry);
+    if olditem.Empty? {
+      olditem.FreeNonEntry();
+      inout self.count := self.count + 1;
+      replaced := lNone;
+    } else if olditem.Tombstone? {
+      olditem.FreeNonEntry();
+      replaced := lNone;
+    } else {
+      var Entry(_: uint64, value: V) := olditem;
+      replaced := lSome(value);
+    }
+    forall explainedKey: uint64 | explainedKey in self.contents
+      ensures exists skips: nat :: SlotExplainsKey(toItems(self.storage), skips, explainedKey)
+    {
+      if entry.key == explainedKey {
+        assert SlotExplainsKey(toItems(self.storage), probeSkips as nat, entry.key);
+      } else {
+        ghost var oldSkips: nat :| SlotExplainsKey(toItems(old_self.storage), oldSkips, explainedKey);
+        assert SlotExplainsKey(toItems(self.storage), oldSkips, explainedKey);
+      }
+    }
+    forall slot: Slot | ValidSlot(operator'cardinality?lseq(self.storage), slot) && toItems(self.storage)[slot.slot].Entry?
+      ensures true && var item: Item<V> := toItems(self.storage)[slot.slot]; true && self.contents[item.key] == Some(item.value)
+    {
+      ghost var item: Item<V> := toItems(self.storage)[slot.slot];
+      if slot != Slot(slotIdx as nat) {
+        if item.key == entry.key {
+          assert TwoNonEmptyValidSlotsWithSameKey(toItems(self.storage), slot, Slot(slotIdx as nat));
+          assert SameSlot(operator'cardinality?lseq(self.storage), slot, Slot(slotIdx as nat));
+          assert false;
+        }
+      }
+    }
+    forall slot: Slot | ValidSlot(operator'cardinality?lseq(self.storage), slot) && toItems(self.storage)[slot.slot].Tombstone?
+      ensures true && var item: lItem<V> := operator'subscript?lseq(self.storage, slot.slot); true && self.contents[item.key].None?
+    {
+      ghost var item: lItem<V> := operator'subscript?lseq(self.storage, slot.slot);
+      if slot != Slot(slotIdx as nat) {
+        if item.key == entry.key {
+          assert TwoNonEmptyValidSlotsWithSameKey(toItems(self.storage), slot, Slot(slotIdx as nat));
+          assert SameSlot(operator'cardinality?lseq(self.storage), slot, Slot(slotIdx as nat));
+          assert false;
+        }
+      }
+    }
+  }
+  method FixedSizeUpdateBySlot<V>(inout self: FixedSizeLinearHashMap<V>, slotIdx: uint64, value: V)
+      returns (replaced: V)
+  {
+    var entry: lItem<V> := lseq_take_inout(inout self.storage, slotIdx);
+    var Entry(key: uint64, oldvalue: V) := entry;
+    lseq_give_inout(inout self.storage, slotIdx, lItem.Entry(key, value));
+    replaced := oldvalue;
+    inout ghost self.contents := self.contents[key := Some(value)];
+    assert EntryInSlotMatchesContents(toItems(old_self.storage), Slot(slotIdx as int), old_self.contents);
+    forall explainedKey: uint64 | explainedKey in self.contents
+      ensures exists skips: nat :: SlotExplainsKey(toItems(self.storage), skips, explainedKey)
+    {
+      ghost var oldSkips: nat :| SlotExplainsKey(toItems(old_self.storage), oldSkips, explainedKey);
+      assert SlotExplainsKey(toItems(self.storage), oldSkips, explainedKey);
+    }
+    forall slot: Slot | ValidSlot(operator'cardinality?lseq(self.storage), slot) && SlotIsEntry(toItems(self.storage), slot)
+      ensures EntryInSlotMatchesContents(toItems(self.storage), slot, self.contents)
+    {
+      assert EntryInSlotMatchesContents(toItems(old_self.storage), slot, old_self.contents);
+      if operator'subscript?lseq(old_self.storage, slot.slot).key == key {
+        assert TwoNonEmptyValidSlotsWithSameKey(toItems(old_self.storage), slot, Slot(slotIdx as int));
+      }
+    }
+    forall slot: Slot | ValidSlot(operator'cardinality?lseq(self.storage), slot) && toItems(self.storage)[slot.slot].Tombstone?
+      ensures TombstoneInSlotMatchesContents(toItems(self.storage), slot, self.contents)
+    {
+      if slot.slot != slotIdx as nat && operator'subscript?lseq(old_self.storage, slot.slot).key == key {
+        assert TwoNonEmptyValidSlotsWithSameKey(toItems(self.storage), slot, Slot(slotIdx as nat));
+        assert SameSlot(operator'cardinality?lseq(self.storage), slot, Slot(slotIdx as nat));
+        assert false;
+      }
+    }
+  }
+  method IsEntry<V>(self: FixedSizeLinearHashMap<V>, key: uint64) returns (b: bool)
+    requires FixedSizeInv(self)
+    ensures b == (key in self.contents && self.contents[key].Some?)
+  {
+    var slotIdx: uint64, _: uint64, _: uint64 := Probe(self, key);
+    b := lseq_peek(self.storage, slotIdx).Entry?;
+    assert b == (key in self.contents && self.contents[key].Some?);
+  }
+  method FixedSizeGet<V>(self: FixedSizeLinearHashMap<V>, key: uint64) returns (found: V)
+    requires FixedSizeInv(self)
+    requires key in self.contents && self.contents[key].Some?
+    ensures found == self.contents[key].value
+  {
+    var slotIdx: uint64, _: uint64, _: uint64 := Probe(self, key);
+    found := lseq_peek(self.storage, slotIdx).value;
+  }
+  method FixedSizeRemove<V>(inout self: FixedSizeLinearHashMap<V>, key: uint64) returns (removed: lOption<V>)
+  {
+    var slotIdx: uint64;
+    ghost var probeStartSlotIdx: uint64, probeSkips: uint64;
+    slotIdx, probeStartSlotIdx, probeSkips := Probe(self, key);
+    if lseq_peek(self.storage, slotIdx).Entry? {
+      var item: lItem<V> := lseq_take_inout(inout self.storage, slotIdx);
+      lseq_give_inout(inout self.storage, slotIdx, lItem.Tombstone(key));
+      var Entry(_: uint64, value: V) := item;
+      removed := lSome(value);
+      inout ghost self.contents := self.contents[key := None];
+      assert EntryInSlotMatchesContents(toItems(old_self.storage), Slot(slotIdx as int), old_self.contents);
+      forall explainedKey: uint64 | explainedKey in self.contents
+        ensures exists skips: nat :: SlotExplainsKey(toItems(self.storage), skips, explainedKey)
+      {
+        if key == explainedKey {
+          assert SlotExplainsKey(toItems(self.storage), probeSkips as nat, key);
+        } else {
+          ghost var oldSkips: nat :| SlotExplainsKey(toItems(old_self.storage), oldSkips, explainedKey);
+          assert SlotExplainsKey(toItems(self.storage), oldSkips, explainedKey);
+        }
+      }
+      forall slot: Slot | ValidSlot(operator'cardinality?lseq(self.storage), slot) && toItems(self.storage)[slot.slot].Entry?
+        ensures true && var item: lItem<V> := operator'subscript?lseq(self.storage, slot.slot); true && self.contents[item.key] == Some(item.value)
+      {
+        ghost var item: lItem<V> := operator'subscript?lseq(self.storage, slot.slot);
+        if slot != Slot(slotIdx as nat) && item.key == key {
+          assert CantEquivocateStorageKey(toItems(self.storage));
+          assert TwoNonEmptyValidSlotsWithSameKey(toItems(self.storage), slot, Slot(slotIdx as nat));
+          assert false;
+        }
+      }
+    } else {
+      removed := lNone;
+    }
+  }
+  lemma CantEquivocateMapFromStorageKey<V>(underlying: FixedSizeLinearHashMap<V>)
+    requires FixedSizeInv(underlying)
+    ensures CantEquivocate(toItems(underlying.storage))
+  {
+    assert operator'cardinality?lseq(underlying.storage) > 0;
+    assert ValidSlot(operator'cardinality?lseq(underlying.storage), Slot(0));
+    assert exists slot: Slot :: ValidSlot(operator'cardinality?lseq(underlying.storage), slot);
+    forall slot1: Slot, slot2: Slot | ValidSlot(operator'cardinality?lseq(underlying.storage), slot1) && ValidSlot(operator'cardinality?lseq(underlying.storage), slot2) && operator'subscript?lseq(underlying.storage, slot1.slot).Entry? && operator'subscript?lseq(underlying.storage, slot2.slot).Entry? && operator'subscript?lseq(underlying.storage, slot1.slot).key == operator'subscript?lseq(underlying.storage, slot2.slot).key
+      ensures slot1 == slot2
+    {
+      assert CantEquivocateStorageKey(toItems(underlying.storage));
+      if operator'subscript?lseq(underlying.storage, slot1.slot).Entry? && operator'subscript?lseq(underlying.storage, slot2.slot).Entry? && operator'subscript?lseq(underlying.storage, slot1.slot).key == operator'subscript?lseq(underlying.storage, slot2.slot).key {
+        assert TwoNonEmptyValidSlotsWithSameKey(toItems(underlying.storage), slot1, slot2);
+        if slot1 != slot2 {
+          assert false;
+        }
+        assert slot1 == slot2;
+      } else {
+        assert slot1 == slot2;
+      }
+    }
+  }
+  predicate UnderlyingContentsMatchesContents<V>(underlying: FixedSizeLinearHashMap<V>, contents: map<uint64, V>)
+  {
+    (forall key: uint64 :: 
+      key in contents ==>
+        key in underlying.contents &&
+        underlying.contents[key] == Some(contents[key])) &&
+    forall key: uint64 :: 
+      key !in contents ==>
+        key !in underlying.contents || underlying.contents[key].None?
+  }
+  predicate UnderlyingInv<V>(self: LinearHashMap<V>, underlying: FixedSizeLinearHashMap<V>)
+  {
+    |self.contents| == self.count as nat &&
+    UnderlyingContentsMatchesContents(underlying, self.contents) &&
+    FixedSizeInv(underlying) &&
+    MapFromStorage(toItems(underlying.storage)) == self.contents
+  }
+  lemma UnderlyingInvImpliesMapFromStorageMatchesContents<V>(underlying: FixedSizeLinearHashMap<V>, contents: map<uint64, V>)
+    requires UnderlyingContentsMatchesContents(underlying, contents)
+    requires FixedSizeInv(underlying)
+    ensures MapFromStorage(toItems(underlying.storage)) == contents
+  {
+    ghost var mapFromStorage: map<uint64, V> := MapFromStorage(toItems(underlying.storage));
+    CantEquivocateMapFromStorageKey(underlying);
+    MapFromStorageProperties(toItems(underlying.storage), mapFromStorage);
+    assert MapFromStorage(toItems(underlying.storage)) == contents;
+  }
+  predicate Inv<V>(self: LinearHashMap<V>)
+    ensures Inv(self) ==> |self.contents| == self.count as nat
+    ensures Inv(self) ==> UnderlyingInv(self, self.underlying)
+  {
+    UnderlyingInv(self, self.underlying) &&
+    MapFromStorage(toItems(self.underlying.storage)) == self.contents &&
+    |self.contents| == self.count as nat &&
+    self.count as nat <= 18446744073709551616 / 8
+  }
+  predicate Inv0<V>(self: LinearHashMap<V>)
+  {
+    Inv(self)
+  }
+  lemma CountBound<V>(self: LinearHashMap<V>)
+    requires Inv(self)
+    ensures self.count as int <= 18446744073709551616 / 8
+  {
+  }
+  lemma RevealProtectedInv<V>(self: LinearHashMap<V>)
+    requires Inv(self)
+    ensures UnderlyingInv(self, self.underlying) && MapFromStorage(toItems(self.underlying.storage)) == self.contents && |self.contents| == self.count as nat
+  {
+  }
+  predicate IsConstructor<V>(self: LinearHashMap<V>, size: uint64)
+    requires 128 <= size
+  {
+    Inv(self) &&
+    self.contents == map[]
+  }
+  method Constructor<V>(size: uint64) returns (self: LinearHashMap<V>)
+    requires 128 <= size
+    ensures IsConstructor(self, size)
+  {
+    var fixed: FixedSizeLinearHashMap<V> := ConstructorFromSize(size);
+    self := LinearHashMap(fixed, 0, map[]);
+    assert forall slot: Slot :: ValidSlot(operator'cardinality?lseq(self.underlying.storage), slot) ==> !operator'subscript?lseq(self.underlying.storage, slot.slot).Entry?;
+    UnderlyingInvImpliesMapFromStorageMatchesContents(self.underlying, self.contents);
+    assert MapFromStorage(toItems(self.underlying.storage)) == self.contents;
+  }
+  lemma LemmaEntryKeyInContents<V>(self: LinearHashMap<V>, i: uint64)
+    requires Inv(self)
+    requires 0 <= i as int < operator'cardinality?lseq(self.underlying.storage)
+    requires operator'subscript?lseq(self.underlying.storage, i as nat).Entry?
+    ensures operator'subscript?lseq(self.underlying.storage, i as nat).key in self.contents
+  {
+    assert EntryInSlotMatchesContents(toItems(self.underlying.storage), Slot(i as nat), self.underlying.contents);
+  }
+  predicate IsRealloc<V>(self: LinearHashMap<V>, self': LinearHashMap<V>)
+    requires Inv(self)
+    requires self.count as nat < 18446744073709551616 / 8
+  {
+    self'.contents == self.contents &&
+    self'.underlying.count as nat < operator'cardinality?lseq(self'.underlying.storage) - 2 &&
+    Inv(self')
+  }
+  method {:timeLimitMultiplier 16} Realloc<V>(inout self: LinearHashMap<V>)
+  {
+    var newSize: uint64 := (128 + self.count) * 4;
+    var newUnderlying: FixedSizeLinearHashMap<V> := ConstructorFromSize(newSize);
+    ghost var transferredContents: map<uint64, V> := map[];
+    ghost var transfers: seq<Item<V>> := toItems(self.underlying.storage);
+    CantEquivocateMapFromStorageKey(self.underlying);
+    var i: uint64 := 0 as uint64;
+    var size: uint64 := lseq_length_as_uint64(self.underlying.storage);
+    while i < size
+      invariant i <= size
+      invariant size as nat == operator'cardinality?lseq(self.underlying.storage)
+      invariant self.count as nat == |self.contents|
+      invariant operator'cardinality?lseq(newUnderlying.storage) == newSize as nat
+      invariant transferredContents.Keys <= self.contents.Keys
+      invariant newUnderlying.count as nat == |transferredContents|
+      invariant newUnderlying.count as nat < operator'cardinality?lseq(newUnderlying.storage) - 2
+      invariant forall key: uint64 :: key in newUnderlying.contents ==> EntryExistsInElements(transfers, i, key)
+      invariant FixedSizeInv(newUnderlying)
+      invariant UnderlyingContentsMatchesContents(newUnderlying, transferredContents)
+      invariant toItems(self.underlying.storage)[i..] == transfers[i..]
+      invariant MapFromStorage(transfers[..i]) == transferredContents
+      invariant MapFromStorage(transfers) == self.contents
+      invariant forall j: int | i as nat <= j < size as nat :: lseq_has(self.underlying.storage)[j]
+      invariant forall j: int | 0 <= j < i as nat :: !lseq_has(self.underlying.storage)[j]
+    {
+      assert i < size;
+      assert Last(transfers[..i + 1]) == transfers[i];
+      assert transfers[..i] == DropLast(transfers[..i + 1]);
+      var item: lItem<V> := lseq_take_inout(inout self.underlying.storage, i);
+      if item.Entry? {
+        ElementsEntryInMap(transfers, item.toItem());
+        if item.key in newUnderlying.contents {
+          ghost var j: uint64 :| 0 <= j < i && ValidSlot(|transfers|, Slot(j as int)) && transfers[Slot(j as int).slot].Entry? && transfers[Slot(j as int).slot].key == item.key;
+          assert ValidSlot(|transfers|, Slot(i as nat));
+          assert false;
+        }
+        assert item.key !in newUnderlying.contents;
+        assert transferredContents.Keys <= self.contents.Keys;
+        SetInclusionImpliesSmallerCardinality(transferredContents.Keys, self.contents.Keys);
+        assert |transferredContents.Keys| <= |self.contents.Keys|;
+        assert |transferredContents| <= |self.contents|;
+        assert newUnderlying.count as nat < operator'cardinality?lseq(newUnderlying.storage) - 1;
+        transferredContents := transferredContents[item.key := item.value];
+        var replaced: lOption<V> := FixedSizeInsertEntry(inout newUnderlying, item);
+        match replaced {
+          case lNone() =>
+        }
+        assert ValidSlot(|transfers|, Slot(i as nat));
+        assert FixedSizeInv(newUnderlying);
+      } else {
+        item.FreeNonEntry();
+      }
+      assert newUnderlying.count as nat < operator'cardinality?lseq(newUnderlying.storage) - 2;
+      i := i + 1;
+      assert toItems(self.underlying.storage)[i..] == transfers[i..];
+    }
+    assert transfers[..i] == transfers;
+    assert UnderlyingContentsMatchesContents(newUnderlying, transferredContents);
+    assert UnderlyingContentsMatchesContents(newUnderlying, self.contents);
+    UnderlyingInvImpliesMapFromStorageMatchesContents(newUnderlying, self.contents);
+    var oldUnderlying: FixedSizeLinearHashMap<V> := Replace(inout self.underlying, newUnderlying);
+    var FixedSizeLinearHashMap(oldstorage: lseq<lItem<V>>, _: uint64, _: map<uint64, Option<V>>) := oldUnderlying;
+    lseq_free(oldstorage);
+  }
+  method Insert<V>(inout self: LinearHashMap<V>, key: uint64, value: V)
+      returns (replaced: lOption<V>)
+  {
+    var len: uint64 := lseq_length_as_uint64(self.underlying.storage);
+    if len / 2 <= self.underlying.count {
+      Realloc(inout self);
+    }
+    replaced := FixedSizeInsert(inout self.underlying, key, value);
+    inout ghost self.contents := self.contents[key := value];
+    if replaced.lNone? {
+      inout self.count := self.count + 1;
+    }
+    UnderlyingInvImpliesMapFromStorageMatchesContents(self.underlying, self.contents);
+  }
+  method Remove<V>(inout self: LinearHashMap<V>, key: uint64) returns (removed: lOption<V>)
+  {
+    removed := FixedSizeRemove(inout self.underlying, key);
+    inout ghost self.contents := map k: uint64 | k in self.contents && k != key :: self.contents[k];
+    if removed.lSome? {
+      inout self.count := self.count - 1;
+    }
+    UnderlyingInvImpliesMapFromStorageMatchesContents(self.underlying, self.contents);
+    assert self.count as nat == |self.contents| by {
+      if removed.lSome? {
+        assert key in old_self.contents;
+        assert self.contents.Keys <= old_self.contents.Keys;
+        assert |old_self.contents| == self.count as nat + 1;
+        assert |old_self.contents.Keys| == self.count as nat + 1;
+        assert |old_self.contents.Keys - {key}| == |old_self.contents.Keys| - |{key}|;
+        assert old_self.contents.Keys - {key} == self.contents.Keys;
+        assert |self.contents| == |old_self.contents| - 1;
+        assert |self.contents| == self.count as nat;
+      } else {
+        assert key !in old_self.contents;
+        assert self.contents == old_self.contents;
+        assert |self.contents| == self.count as nat;
+      }
+    }
+  }
+  method Get<V>(self: LinearHashMap<V>, key: uint64) returns (result: V)
+    requires Inv(self)
+    requires key in self.underlying.contents && self.underlying.contents[key].Some?
+    ensures key in self.contents && result == self.contents[key]
+  {
+    result := FixedSizeGet(self.underlying, key);
+  }
+Dafny program verifier did not attempt verification

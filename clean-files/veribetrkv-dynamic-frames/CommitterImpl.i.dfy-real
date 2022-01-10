@@ -1,0 +1,35 @@
+// CommitterImpl.i.dfy
+module CommitterImpl {
+  class Committer {
+    var status: CommitterModel.Status
+    var journalist: JournalistImpl.Journalist
+    var frozenLoc: Option<Location>
+    var isFrozen: bool
+    var frozenJournalPosition: uint64
+    var superblockWrite: Option<JC.ReqId>
+    var outstandingJournalWrites: set<JC.ReqId>
+    var superblock: Superblock
+    var newSuperblock: Option<Superblock>
+    var whichSuperblock: uint64
+    var commitStatus: JC.CommitStatus
+    var journalFrontRead: Option<JC.ReqId>
+    var journalBackRead: Option<JC.ReqId>
+    var superblock1Read: Option<JC.ReqId>
+    var superblock2Read: Option<JC.ReqId>
+    var superblock1: JC.SuperblockReadResult
+    var superblock2: JC.SuperblockReadResult
+    var syncReqs: MutableMap.ResizingHashMap<JC.SyncReqStatus>
+    ghost var Repr: set<object>
+    constructor ()
+    {
+      journalist := new JournalistImpl.Journalist();
+      syncReqs := new MutableMap.ResizingHashMap<JC.SyncReqStatus>(128);
+      status := CommitterModel.StatusLoadingSuperblock;
+      superblock1Read := None;
+      superblock2Read := None;
+      superblock1 := JC.SuperblockUnfinished;
+      superblock2 := JC.SuperblockUnfinished;
+      new;
+    }
+  }
+}

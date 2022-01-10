@@ -1,0 +1,17 @@
+// StateBCImpl.i.dfy
+module StateBCImpl {
+  type ImplVariables = Variables
+  type Reference = BT.G.Reference
+  datatype Variables = Ready(persistentIndirectionTable: IT.IndirectionTable, frozenIndirectionTable: lOption<IT.IndirectionTable>, ephemeralIndirectionTable: IT.IndirectionTable, persistentIndirectionTableLoc: DiskLayout.Location, frozenIndirectionTableLoc: Option<DiskLayout.Location>, outstandingIndirectionTableWrite: Option<BC.ReqId>, outstandingBlockWrites: map<BC.ReqId, BC.OutstandingWrite>, outstandingBlockReads: map<BC.ReqId, BC.OutstandingRead>, cache: LMutCache, lru: LinearLru.LinearLru, blockAllocator: BlockAllocatorImpl.BlockAllocator) | Loading(indirectionTableLoc: DiskLayout.Location, indirectionTableRead: Option<BC.ReqId>) | Unready {
+    method DebugAccumulate() returns (acc: DebugAccumulator.DebugAccumulator)
+    function method TotalCacheSize(): (res: uint64)
+    {
+      CacheImpl.CacheCount(cache) + |outstandingBlockReads| as uint64
+    }
+    static method Constructor() returns (v: Variables)
+    {
+      v := Unready;
+    }
+  }
+}
+Dafny program verifier did not attempt verification

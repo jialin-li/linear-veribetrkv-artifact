@@ -1,0 +1,224 @@
+  var Length: int  // immutable
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): bool
+    reads reads(x0, x1, x2, x3, x4)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): set<object?>
+    reads reads(x0, x1, x2, x3, x4)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): bool
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  method composeGenerator(cache: CacheImpl.LMutCache, ref: BT.G.Reference, r: uint64, g: lOption<BGI.Generator>, ghost acc: seq<Bucket>, ghost bucket: Bucket, start: UI.RangeStart)
+      returns (g': BGI.Generator)
+    requires cache.Inv()
+    requires cache.ptr(ref).Some?
+    requires BT.WFNode(cache.I()[ref])
+    requires r as nat < |cache.I()[ref].buckets|
+    requires bucket == cache.I()[ref].buckets[r as nat]
+    requires WFBucket(bucket)
+    requires forall i: int | 0 <= i < |acc| :: WFBucket(acc[i])
+    requires g.lSome? <==> |acc| >= 1
+    requires g.lSome? ==> g.value.Inv() && g.value.I() == BGM.GenFromBucketStackWithLowerBound(acc, start)
+    ensures g'.Inv() && g'.I() == BGM.GenFromBucketStackWithLowerBound(acc + [bucket], start)
+  {
+    var g2: BGI.Generator := cache.NodeBucketGen(ref, r, start);
+    BGM.reveal_GenFromBucketStackWithLowerBound();
+    match g {
+      case lSome(g1) =>
+        g' := BGI.Generator.GenCompose(g1, g2);
+      case lNone() =>
+        g' := g2;
+    }
+  }
+  method getPathInternal(inout s: ImplVariables, io: DiskIOHandler, key: Key, ghost acc: seq<Bucket>, g: lOption<BGI.Generator>, start: UI.RangeStart, upTo: Option<Key>, maxToFind: uint64, ref: BT.G.Reference, counter: uint64, pivots: PivotTable, children: Option<seq<BT.G.Reference>>)
+      returns (res: Option<UI.SuccResultList>)
+    modifies io
+    decreases counter, 0
+  {
+    SuccModel.reveal_getPathInternal();
+    var r: uint64 := Pivots.ComputeRoute(pivots, key);
+    ghost var node: BT.G.Node := s.cache.I()[ref];
+    ghost var bucket: Bucket := s.cache.I()[ref].buckets[r as nat];
+    ghost var acc': seq<Bucket> := acc + [bucket];
+    var upTo': Option<Key>;
+    if pivots[r + 1].Max_Element? {
+      upTo' := upTo;
+    } else {
+      var ub: Key := ComputeGetKey(pivots, r + 1);
+      if upTo.Some? {
+        var c: int32 := cmp(upTo.value, ub);
+        var k: Key := if c < 0 then upTo.value else ub;
+        upTo' := Some(k);
+      } else {
+        upTo' := Some(ub);
+      }
+    }
+    if children.Some? {
+      if counter == 0 {
+        print "getPathInternal failure: count ran down\n";
+        res := None;
+        match g {
+          case lSome(g1) =>
+            g1.Free();
+          case lNone() =>
+        }
+        assert (s.I(), IIO(io), res) == SuccModel.getPathInternal(old_s.I(), old(IIO(io)), key, old(acc), start, upTo, maxToFind as int, ref, counter, node);
+      } else {
+        BookkeepingModel.lemmaChildInGraph(s.I(), ref, children.value[r]);
+        var g': BGI.Generator := composeGenerator(s.cache, ref, r, g, acc, bucket, start);
+        res := getPath(inout s, io, key, acc', lSome(g'), start, upTo', maxToFind, children.value[r], counter - 1);
+        assert (s.I(), IIO(io), res) == SuccModel.getPathInternal(old_s.I(), old(IIO(io)), key, old(acc), start, upTo, maxToFind as int, ref, counter, node);
+      }
+    } else {
+      var g': BGI.Generator := composeGenerator(s.cache, ref, r, g, acc, bucket, start);
+      var res0: UI.SuccResultList := BucketSuccessorLoopImpl.GetSuccessorInBucketStack(g', acc', maxToFind, start, upTo');
+      res := Some(res0);
+      assert (s.I(), IIO(io), res) == SuccModel.getPathInternal(old_s.I(), old(IIO(io)), key, old(acc), start, upTo, maxToFind as int, ref, counter, node);
+    }
+  }
+  method getPath(inout s: ImplVariables, io: DiskIOHandler, key: Key, ghost acc: seq<Bucket>, g: lOption<BGI.Generator>, start: UI.RangeStart, upTo: Option<Key>, maxToFind: uint64, ref: BT.G.Reference, counter: uint64)
+      returns (res: Option<UI.SuccResultList>)
+    modifies io
+    decreases counter, 1
+  {
+    SuccModel.reveal_getPath();
+    var incache: bool := s.cache.InCache(ref);
+    if incache {
+      var pivots: Pivots.PivotTable, children: Option<seq<BT.G.Reference>> := s.cache.GetNodeInfo(ref);
+      var boundedkey: bool := ComputeBoundedKey(pivots, key);
+      if boundedkey {
+        res := getPathInternal(inout s, io, key, acc, g, start, upTo, maxToFind, ref, counter, pivots, children);
+        LruModel.LruUse(s.lru.Queue(), ref);
+        s.lru.Use(ref);
+      } else {
+        match g {
+          case lSome(g1) =>
+            g1.Free();
+          case lNone() =>
+        }
+        print "getPath: look up key is not bounded in path nodes\n";
+        res := None;
+      }
+    } else {
+      match g {
+        case lSome(g1) =>
+          g1.Free();
+        case lNone() =>
+      }
+      if CacheImpl.CacheCount(s.cache) + |s.outstandingBlockReads| as uint64 <= MaxCacheSizeUint64() - 1 {
+        PageInNodeReq(inout s, io, ref);
+      } else {
+        print "getPath: Can't page in anything because cache is full\n";
+      }
+      res := None;
+    }
+  }
+  method doSucc(inout s: ImplVariables, io: DiskIOHandler, start: UI.RangeStart, maxToFind: uint64)
+      returns (res: Option<UI.SuccResultList>)
+    modifies io
+  {
+    PBS.reveal_LookupUpperBound();
+    var startKey: seq<NativeTypes.byte> := if start.NegativeInf? then [] else start.key;
+    SuccModel.lemmaGetPathResult(old_s.I(), IIO(io), startKey, [], [], start, None, maxToFind as int, BT.G.Root(), 40);
+    res := getPath(inout s, io, startKey, [], lNone, start, None, maxToFind, BT.G.Root(), 40);
+  }
+Dafny program verifier did not attempt verification

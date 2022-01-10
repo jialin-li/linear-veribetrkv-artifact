@@ -1,0 +1,57 @@
+// Mkfs.i.dfy
+module MkfsImpl {
+  method Mkfs() returns (diskContents: map<Addr, seq<byte>>)
+    ensures MkfsModel.InitDiskContents(diskContents)
+    ensures ADM.BlocksDontIntersect(diskContents)
+  {
+    var s1addr: Addr := Superblock1Location().addr;
+    var s2addr: uint64 := Superblock2Location().addr;
+    var indirectionTableAddr: uint64 := IndirectionTable1Addr();
+    var nodeAddr: uint64 := NodeBlockSizeUint64() * MinNodeBlockIndexUint64();
+    WeightBucketEmpty();
+    var empty: MutBucket := new MutBucket();
+    MutBucket.ReprSeqDisjointOfLen1([empty]);
+    var node: Node := new Node([], None, [empty]);
+    WeightBucketListOneEmpty();
+    assert node.I().buckets == [empty.I()];
+    ghost var sector: SI.Sector := SI.SectorNode(node);
+    ghost var is: SM.Sector := SI.ISector(sector);
+    assert SM.WFNode(is.node) by {
+      reveal_WeightBucketList();
+    }
+    var bNode_array: array?<byte> := MarshallingImpl.MarshallCheckedSector(SI.SectorNode(node));
+    var bNode: seq<byte> := bNode_array[..];
+    var nodeLoc: Location := Location(nodeAddr, |bNode| as uint64);
+    assert ValidNodeLocation(nodeLoc) by {
+      ValidNodeAddrMul(MinNodeBlockIndexUint64());
+    }
+    var sectorIndirectionTable: IndirectionTable := new IndirectionTableImpl.IndirectionTable.RootOnly(nodeLoc);
+    assert SM.IIndirectionTable(SI.IIndirectionTable(sectorIndirectionTable)) == IndirectionTable(map[0 := nodeLoc], map[0 := []]);
+    assert BC.WFCompleteIndirectionTable(SM.IIndirectionTable(SI.IIndirectionTable(sectorIndirectionTable)));
+    assert SM.WFSector(SI.ISector(SI.SectorIndirectionTable(sectorIndirectionTable)));
+    var bIndirectionTable_array: array?<byte> := MarshallingImpl.MarshallCheckedSector(SI.SectorIndirectionTable(sectorIndirectionTable));
+    assert bIndirectionTable_array != null;
+    var bIndirectionTable: seq<byte> := bIndirectionTable_array[..];
+    var indirectionTableLoc: Location := Location(indirectionTableAddr, |bIndirectionTable| as uint64);
+    assert ValidIndirectionTableLocation(indirectionTableLoc);
+    var sectorSuperblock: Sector := SI.SectorSuperblock(Superblock(0, 0, 0, indirectionTableLoc));
+    var bSuperblock_array: array?<byte> := MarshallingImpl.MarshallCheckedSector(sectorSuperblock);
+    var bSuperblock: seq<byte> := bSuperblock_array[..];
+    ghost var ghosty: bool := true;
+    if ghosty {
+      if overlap(Superblock1Location(), nodeLoc) {
+        overlappingLocsSameType(Superblock1Location(), nodeLoc);
+      }
+      if overlap(Superblock2Location(), nodeLoc) {
+        overlappingLocsSameType(Superblock2Location(), nodeLoc);
+      }
+      if overlap(indirectionTableLoc, nodeLoc) {
+        overlappingLocsSameType(indirectionTableLoc, nodeLoc);
+      }
+    }
+    ghost var gnode: Node := Marshalling.parseCheckedSector(bNode).value.node;
+    assert gnode.pivotTable == [];
+    assert gnode.children == None;
+    diskContents := map[s1addr := bSuperblock, s2addr := bSuperblock, indirectionTableAddr := bIndirectionTable, nodeAddr := bNode];
+  }
+}

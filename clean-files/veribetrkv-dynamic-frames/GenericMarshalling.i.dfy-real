@@ -1,0 +1,393 @@
+// GenericMarshalling.i.dfy
+module GenericMarshalling {
+  datatype G = GUint32 | GUint64 | GArray(elt: G) | GTuple(t: seq<G>) | GByteArray | GUint32Array | GUint64Array | GTaggedUnion(cases: seq<G>)
+  datatype V = VUint32(v: uint32) | VUint64(u: uint64) | VArray(a: seq<V>) | VTuple(t: seq<V>) | VByteArray(b: seq<byte>) | VUint32Array(va: seq<uint32>) | VUint64Array(ua: seq<uint64>) | VCase(c: uint64, val: V)
+  datatype ContentsTraceStep = ContentsTraceStep(data: seq<byte>, val: Option<V>)
+  method ParseUint32(data: seq<byte>, index: uint64)
+      returns (success: bool, v: V, rest_index: uint64)
+  {
+    if |data| as uint64 - index >= 4 {
+      var result: uint32 := Unpack_LittleEndian_Uint32(data, index);
+      success := true;
+      v := VUint32(result);
+      rest_index := index + Uint32Size();
+    } else {
+      success := false;
+      rest_index := |data| as uint64;
+    }
+  }
+  method ParseUint64(data: seq<byte>, index: uint64)
+      returns (success: bool, v: V, rest_index: uint64)
+  {
+    if |data| as uint64 - index >= 8 {
+      var result: uint64 := Unpack_LittleEndian_Uint64(data, index);
+      success := true;
+      v := VUint64(result);
+      rest_index := index + Uint64Size();
+    } else {
+      success := false;
+      rest_index := |data| as uint64;
+    }
+  }
+  method {:timeLimit 20} ParseArrayContents(data: seq<byte>, index: uint64, eltType: G, len: uint64)
+      returns (success: bool, v: seq<V>, rest_index: uint64)
+  {
+    var vArr: array?<V> := new V[len];
+    success := true;
+    var i: uint64 := 0;
+    var next_val_index: uint64 := index;
+    while i < len
+    {
+      var some1: bool, val: V, rest1: uint64 := ParseVal(data, next_val_index, eltType);
+      if !some1 {
+        success := false;
+        rest_index := |data| as uint64;
+        return;
+      }
+      vArr[i] := val;
+      next_val_index := rest1;
+      i := i + 1;
+    }
+    success := true;
+    rest_index := next_val_index;
+    v := vArr[..];
+  }
+  method ParseArray(data: seq<byte>, index: uint64, eltType: G)
+      returns (success: bool, v: V, rest_index: uint64)
+  {
+    var some1: bool, len: V, rest: uint64 := ParseUint64(data, index);
+    if some1 {
+      var some2: bool, contents: seq<V>, remainder: uint64 := ParseArrayContents(data, rest, eltType, len.u);
+      if some2 {
+        success := true;
+        v := VArray(contents);
+        rest_index := remainder;
+      } else {
+        success := false;
+        rest_index := |data| as uint64;
+      }
+    } else {
+      success := false;
+      rest_index := |data| as uint64;
+    }
+  }
+  method {:timeLimit 20} ParseTupleContents(data: seq<byte>, index: uint64, eltTypes: seq<G>)
+      returns (success: bool, v: seq<V>, rest_index: uint64)
+  {
+    var vArr: array?<V> := new V[|eltTypes| as uint64];
+    success := true;
+    var i: uint64 := 0;
+    var next_val_index: uint64 := index;
+    while i < |eltTypes| as uint64
+    {
+      var some1: bool, val: V, rest1: uint64 := ParseVal(data, next_val_index, eltTypes[i]);
+      if !some1 {
+        success := false;
+        rest_index := |data| as uint64;
+        return;
+      }
+      vArr[i] := val;
+      next_val_index := rest1;
+      i := i + 1;
+    }
+    success := true;
+    rest_index := next_val_index;
+    v := vArr[..];
+  }
+  method ParseTuple(data: seq<byte>, index: uint64, eltTypes: seq<G>)
+      returns (success: bool, v: V, rest_index: uint64)
+  {
+    var some: bool, contents: seq<V>, rest: uint64 := ParseTupleContents(data, index, eltTypes);
+    if some {
+      success := true;
+      v := VTuple(contents);
+      rest_index := rest;
+    } else {
+      success := false;
+      rest_index := |data| as uint64;
+    }
+  }
+  method ParseByteArray(data: seq<byte>, index: uint64)
+      returns (success: bool, v: seq<byte>, rest_index: uint64)
+  {
+    var some: bool, len: V, rest: uint64 := ParseUint64(data, index);
+    if some && len.u <= |data| as uint64 - rest {
+      success := true;
+      v := data[rest .. rest + len.u];
+      rest_index := rest + len.u;
+    } else {
+      success := false;
+      rest_index := |data| as uint64;
+    }
+  }
+  method ParseUint32Array(data: seq<byte>, index: uint64)
+      returns (success: bool, v: V, rest_index: uint64)
+  {
+    if |data| as uint64 - index >= 8 {
+      var len: uint64 := Unpack_LittleEndian_Uint64(data, index);
+      if len <= (|data| as uint64 - index - 8) / Uint32Size() {
+        success := true;
+        var contents: seq<uint32> := Unpack_LittleEndian_Uint32_Seq(data, index + Uint64Size(), len);
+        v := VUint32Array(contents);
+        rest_index := index + 8 + len * Uint32Size();
+      } else {
+        success := false;
+        rest_index := |data| as uint64;
+      }
+    } else {
+      success := false;
+      rest_index := |data| as uint64;
+    }
+  }
+  method ParseUint64Array(data: seq<byte>, index: uint64)
+      returns (success: bool, v: V, rest_index: uint64)
+  {
+    if |data| as uint64 - index >= 8 {
+      var len: uint64 := Unpack_LittleEndian_Uint64(data, index);
+      if len <= (|data| as uint64 - index - 8) / Uint64Size() {
+        success := true;
+        var contents: seq<uint64> := Unpack_LittleEndian_Uint64_Seq(data, index + Uint64Size(), len);
+        v := VUint64Array(contents);
+        rest_index := index + 8 + len * Uint64Size();
+      } else {
+        success := false;
+        rest_index := |data| as uint64;
+      }
+    } else {
+      success := false;
+      rest_index := |data| as uint64;
+    }
+  }
+  method ParseCase(data: seq<byte>, index: uint64, cases: seq<G>)
+      returns (success: bool, v: V, rest_index: uint64)
+  {
+    var some1: bool, caseID: V, rest1: uint64 := ParseUint64(data, index);
+    if some1 && caseID.u < |cases| as uint64 {
+      var some2: bool, val: V, rest2: uint64 := ParseVal(data, rest1, cases[caseID.u]);
+      if some2 {
+        success := true;
+        v := VCase(caseID.u, val);
+        rest_index := rest2;
+      } else {
+        success := false;
+        rest_index := |data| as uint64;
+      }
+    } else {
+      success := false;
+      rest_index := |data| as uint64;
+    }
+  }
+  method ParseVal(data: seq<byte>, index: uint64, grammar: G)
+      returns (success: bool, v: V, rest_index: uint64)
+  {
+    match grammar {
+      case GUint32 =>
+        success, v, rest_index := ParseUint32(data, index);
+      case GUint64 =>
+        success, v, rest_index := ParseUint64(data, index);
+      case GArray(elt) =>
+        success, v, rest_index := ParseArray(data, index, elt);
+      case GTuple(t) =>
+        success, v, rest_index := ParseTuple(data, index, t);
+      case GByteArray =>
+        {
+          var v';
+          success, v', rest_index := ParseByteArray(data, index);
+          v := VByteArray(v');
+        }
+      case GUint32Array =>
+        success, v, rest_index := ParseUint32Array(data, index);
+      case GUint64Array =>
+        success, v, rest_index := ParseUint64Array(data, index);
+      case GTaggedUnion(cases) =>
+        success, v, rest_index := ParseCase(data, index, cases);
+    }
+  }
+  method Demarshall(data: seq<byte>, grammar: G)
+      returns (success: bool, v: V)
+  {
+    var rest: uint64;
+    success, v, rest := ParseVal(data, 0, grammar);
+    if success && rest == |data| as uint64  else {
+      success := false;
+    }
+  }
+  method ComputeSeqSum(s: seq<V>) returns (size: uint64)
+  {
+    var i: uint64 := 0;
+    var res: uint64 := 0;
+    while i < |s| as uint64
+    {
+      var v_size: uint64 := ComputeSizeOf(s[i]);
+      res := res + v_size;
+      i := i + 1;
+    }
+    return res;
+  }
+  method ComputeSizeOf(val: V) returns (size: uint64)
+  {
+    match val {
+      case VUint32(_v6) =>
+        size := 4;
+      case VUint64(_v7) =>
+        size := 8;
+      case VArray(a) =>
+        var v := ComputeSeqSum(a);
+        if v == 0 {
+          size := 8;
+        } else {
+          size := 8 + v;
+        }
+      case VTuple(t) =>
+        size := ComputeSeqSum(t);
+      case VByteArray(b) =>
+        size := 8 + |b| as uint64;
+      case VUint32Array(b) =>
+        size := 8 + 4 * |b| as uint64;
+      case VUint64Array(b) =>
+        size := 8 + 8 * |b| as uint64;
+      case VCase(c, v) =>
+        var vs := ComputeSizeOf(v);
+        size := 8 + vs;
+    }
+  }
+  method MarshallUint32(n: uint32, data: array<byte>, index: uint64)
+    modifies data
+  {
+    Pack_LittleEndian_Uint32_into_Array(n, data, index);
+  }
+  method MarshallUint64(n: uint64, data: array<byte>, index: uint64)
+    modifies data
+  {
+    Pack_LittleEndian_Uint64_into_Array(n, data, index);
+  }
+  method {:timeLimit 40} MarshallArrayContents(contents: seq<V>, ghost eltType: G, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    var i: uint64 := 0;
+    var cur_index: uint64 := index;
+    while i < |contents| as uint64
+    {
+      var item_size: uint64 := MarshallVal(contents[i], eltType, data, cur_index);
+      cur_index := cur_index + item_size;
+      i := i + 1;
+    }
+    size := cur_index - index;
+  }
+  method MarshallArray(val: V, ghost grammar: G, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    MarshallUint64(|val.a| as uint64, data, index);
+    var contents_size: uint64 := MarshallArrayContents(val.a, grammar.elt, data, index + Uint64Size());
+    size := 8 + contents_size;
+  }
+  method {:timeLimit 20} MarshallTupleContents(contents: seq<V>, ghost eltTypes: seq<G>, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    var i: uint64 := 0;
+    var cur_index: uint64 := index;
+    while i < |contents| as uint64
+    {
+      var item_size: uint64 := MarshallVal(contents[i], eltTypes[i], data, cur_index);
+      cur_index := cur_index + item_size;
+      i := i + 1;
+    }
+    size := cur_index - index;
+  }
+  method MarshallTuple(val: V, ghost grammar: G, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    size := MarshallTupleContents(val.t, grammar.t, data, index);
+  }
+  method MarshallBytes(bytes: seq<byte>, data: array<byte>, index: uint64)
+    modifies data
+  {
+    NativeArrays.CopySeqIntoArray(bytes, 0, data, index, |bytes| as uint64);
+  }
+  method MarshallByteArrayInterior(b: seq<byte>, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    MarshallUint64(|b| as uint64, data, index);
+    MarshallBytes(b, data, index + 8);
+    size := 8 + |b| as uint64;
+  }
+  method MarshallByteArray(val: V, ghost grammar: G, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    MarshallUint64(|val.b| as uint64, data, index);
+    MarshallBytes(val.b, data, index + 8);
+    size := 8 + |val.b| as uint64;
+  }
+  method MarshallUint32Array(val: V, ghost grammar: G, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    MarshallUint64(|val.va| as uint64, data, index);
+    Pack_LittleEndian_Uint32_Seq_into_Array(val.va, data, index + 8);
+    size := 8 + |val.va| as uint64 * 4;
+  }
+  method MarshallUint64Array(val: V, ghost grammar: G, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    MarshallUint64(|val.ua| as uint64, data, index);
+    Pack_LittleEndian_Uint64_Seq_into_Array(val.ua, data, index + 8);
+    size := 8 + |val.ua| as uint64 * 8;
+  }
+  method MarshallCase(val: V, ghost grammar: G, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    MarshallUint64(val.c, data, index);
+    var val_size: uint64 := MarshallVal(val.val, grammar.cases[val.c], data, index + 8);
+    size := 8 + val_size;
+  }
+  method MarshallVUint32(val: V, ghost grammar: G, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    MarshallUint32(val.v, data, index);
+    return 4;
+  }
+  method MarshallVUint64(val: V, ghost grammar: G, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    MarshallUint64(val.u, data, index);
+    return 8;
+  }
+  method MarshallVal(val: V, ghost grammar: G, data: array<byte>, index: uint64)
+      returns (size: uint64)
+    modifies data
+  {
+    match val
+    case VUint32(_v8) =>
+      size := MarshallVUint32(val, grammar, data, index);
+    case VUint64(_v9) =>
+      size := MarshallVUint64(val, grammar, data, index);
+    case VArray(_v10) =>
+      size := MarshallArray(val, grammar, data, index);
+    case VTuple(_v11) =>
+      size := MarshallTuple(val, grammar, data, index);
+    case VUint32Array(_v12) =>
+      size := MarshallUint32Array(val, grammar, data, index);
+    case VUint64Array(_v13) =>
+      size := MarshallUint64Array(val, grammar, data, index);
+    case VByteArray(_v14) =>
+      size := MarshallByteArray(val, grammar, data, index);
+    case VCase(_v15, _v16) =>
+      size := MarshallCase(val, grammar, data, index);
+  }
+  method Marshall(val: V, ghost grammar: G) returns (data: array<byte>)
+  {
+    var size: uint64 := ComputeSizeOf(val);
+    data := new byte[size];
+    var computed_size: uint64 := MarshallVal(val, grammar, data, 0);
+  }
+}

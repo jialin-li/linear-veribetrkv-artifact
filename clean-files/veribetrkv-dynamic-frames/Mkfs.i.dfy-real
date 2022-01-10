@@ -1,0 +1,23 @@
+// Mkfs.i.dfy
+module MkfsImpl {
+  method Mkfs() returns (diskContents: map<Addr, seq<byte>>)
+  {
+    var s1addr: Addr := Superblock1Location().addr;
+    var s2addr: uint64 := Superblock2Location().addr;
+    var indirectionTableAddr: uint64 := IndirectionTable1Addr();
+    var nodeAddr: uint64 := NodeBlockSizeUint64() * MinNodeBlockIndexUint64();
+    var empty: MutBucket := new MutBucket();
+    var node: Node := new Node([], None, [empty]);
+    var bNode_array: array?<byte> := MarshallingImpl.MarshallCheckedSector(SI.SectorNode(node));
+    var bNode: seq<byte> := bNode_array[..];
+    var nodeLoc: Location := Location(nodeAddr, |bNode| as uint64);
+    var sectorIndirectionTable: IndirectionTable := new IndirectionTableImpl.IndirectionTable.RootOnly(nodeLoc);
+    var bIndirectionTable_array: array?<byte> := MarshallingImpl.MarshallCheckedSector(SI.SectorIndirectionTable(sectorIndirectionTable));
+    var bIndirectionTable: seq<byte> := bIndirectionTable_array[..];
+    var indirectionTableLoc: Location := Location(indirectionTableAddr, |bIndirectionTable| as uint64);
+    var sectorSuperblock: Sector := SI.SectorSuperblock(Superblock(0, 0, 0, indirectionTableLoc));
+    var bSuperblock_array: array?<byte> := MarshallingImpl.MarshallCheckedSector(sectorSuperblock);
+    var bSuperblock: seq<byte> := bSuperblock_array[..];
+    diskContents := map[s1addr := bSuperblock, s2addr := bSuperblock, indirectionTableAddr := bIndirectionTable, nodeAddr := bNode];
+  }
+}

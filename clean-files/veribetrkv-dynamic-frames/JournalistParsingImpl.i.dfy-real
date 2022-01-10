@@ -1,0 +1,105 @@
+// JournalistParsingImpl.i.dfy
+module JournalistParsingImpl {
+  method computeJournalBlockOfByteSeq(s: seq<byte>, i: uint64) returns (jb: Option<JournalBlock>)
+  {
+    var chunk: seq<byte> := s[i + 32 .. i + 4096];
+    var c: seq<byte> := Crc32C(chunk);
+    if c == s[i .. i + 32] {
+      jb := Some(chunk);
+    } else {
+      jb := None;
+    }
+  }
+  method computeJournalRangeOfByteSeq(s: seq<byte>) returns (res: Option<JournalRange>)
+  {
+    if |s| as uint64 % 4096 != 0 {
+      return None;
+    }
+    var numBlocks: uint64 := |s| as uint64 / 4096;
+    var i: uint64 := numBlocks;
+    var ar: array?<JournalBlock> := new JournalBlock[numBlocks];
+    while i > 0
+    {
+      i := i - 1;
+      var block: Option<JournalBlock> := computeJournalBlockOfByteSeq(s, 4096 * i);
+      if block.Some? {
+        ar[i] := block.value;
+      } else {
+        return None;
+      }
+    }
+    res := Some(ar[..]);
+  }
+  method doConcat(s: seq<JournalBlock>) returns (t: seq<byte>)
+  {
+    var ar: array?<byte> := new byte[4064 * |s| as uint64];
+    var i: uint64 := 0;
+    while i < |s| as uint64
+    {
+      NativeArrays.CopySeqIntoArray(s[i], 0, ar, i * 4064, 4064);
+      i := i + 1;
+    }
+    t := ar[..];
+  }
+  method ParseHeader(s: JournalBlock) returns (nentries: uint32, nblocks: uint32)
+  {
+    nentries := Unpack_LittleEndian_Uint32(s, 0);
+    nblocks := Unpack_LittleEndian_Uint32(s, 4);
+  }
+  method ParseJournalRangeOfBytes(s: seq<byte>, len: uint64) returns (res: Option<seq<JournalEntry>>)
+  {
+    var ar: array?<JournalEntry> := new JournalEntry[len];
+    var i: uint64 := 0;
+    var idx: uint64 := 8;
+    while i < len
+    {
+      var idx0: uint64 := idx;
+      if !(4 <= |s| as uint64 - idx0) {
+        return None;
+      }
+      var idx1: uint64 := idx0 + 4;
+      var keyLen: uint32 := Unpack_LittleEndian_Uint32(s, idx0);
+      if !(4 + keyLen as uint64 + 4 <= |s| as uint64 - idx && keyLen as uint64 <= KeyType.MaxLen()) {
+        return None;
+      }
+      var key: Key := s[idx1 .. idx1 + keyLen as uint64];
+      var idx2: uint64 := idx1 + keyLen as uint64;
+      var valueLen: uint32 := Unpack_LittleEndian_Uint32(s, idx2);
+      var idx3: uint64 := idx2 + 4;
+      if !(valueLen as uint64 <= ValueType.MaxLen() && valueLen as uint64 <= |s| as uint64 - idx3) {
+        return None;
+      }
+      var value: Value := s[idx3 .. idx3 + valueLen as uint64];
+      var idx4: uint64 := idx3 + valueLen as uint64;
+      var je: JournalEntry := JournalInsert(key, value);
+      ar[i] := je;
+      i := i + 1;
+      idx := idx4;
+    }
+    res := Some(ar[..]);
+  }
+  method ParseJournalRange(jr: JournalRange) returns (res: Option<seq<JournalEntry>>)
+  {
+    if |jr| as uint64 == 0 {
+      return Some([]);
+    } else {
+      var nentries: uint32, nblocks: uint32 := ParseHeader(jr[0]);
+      if 0 <= nentries && 1 <= nblocks as uint64 <= |jr| as uint64 {
+        var c: seq<byte> := doConcat(jr[..nblocks]);
+        var p1: Option<seq<JournalEntry>> := ParseJournalRangeOfBytes(c, nentries as uint64);
+        if p1.Some? {
+          var p2: Option<seq<JournalEntry>> := ParseJournalRange(jr[nblocks..]);
+          if p2.Some? {
+            return Some(p1.value + p2.value);
+          } else {
+            return None;
+          }
+        } else {
+          return None;
+        }
+      } else {
+        return None;
+      }
+    }
+  }
+}

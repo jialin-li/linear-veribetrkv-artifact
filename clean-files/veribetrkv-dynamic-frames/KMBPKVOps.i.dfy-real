@@ -1,0 +1,64 @@
+// KMBPKVOps.i.dfy
+module KMBPKVOps {
+  method LeafFillDpkv(node: KMB.Node, dpkv: DPKV.DynamicPkv)
+    modifies dpkv.Repr
+  {
+    var keys: array?<Key> := node.contents.keys;
+    var values: array?<Value> := node.contents.values;
+    var nkeys: uint64 := node.contents.nkeys;
+    var messages: seq<seq<byte>> := ValueMessage.MessageArray_to_bytestringSeq(values, nkeys);
+    dpkv.keys.AppendSeq(keys[..nkeys]);
+    dpkv.messages.AppendSeq(messages);
+  }
+  method IndexFillDpkv(node: KMB.Node, dpkv: DPKV.DynamicPkv)
+    modifies dpkv.Repr
+  {
+    var children: array?<Node?> := node.contents.children;
+    var nchildren: uint64 := node.contents.nchildren;
+    var i: uint64 := 0;
+    while i < nchildren
+    {
+      FillDpkv(children[i], dpkv);
+      i := i + 1;
+    }
+  }
+  method FillDpkv(node: KMB.Node, dpkv: DPKV.DynamicPkv)
+    modifies dpkv.Repr
+  {
+    if node.contents.Leaf? {
+      LeafFillDpkv(node, dpkv);
+    } else {
+      IndexFillDpkv(node, dpkv);
+    }
+  }
+  method ToPkv(node: KMB.Node) returns (pkv: DPKV.PKV.Pkv)
+  {
+    var nelts: uint64 := KMBBOps.CountElements(node);
+    var keydatasize: uint32 := if nelts * KeyType.MaxLen() <= 4294967295 then (nelts * KeyType.MaxLen()) as uint32 else 4294967295;
+    var msgdatasize: uint32 := if nelts * ValueType.MaxLen() <= 4294967295 then (nelts * ValueType.MaxLen()) as uint32 else 4294967295;
+    var cap: Capacity := DPKV.Capacity(nelts as uint32, keydatasize, msgdatasize);
+    var dpkv: DynamicPkv := new DPKV.DynamicPkv.PreSized(cap);
+    FillDpkv(node, dpkv);
+    pkv := dpkv.toPkv();
+  }
+  method FromPkv(pkv: DPKV.PKV.Pkv) returns (node: KMB.Node, weight: uint64)
+  {
+    var i: uint64 := 0;
+    var oldvalue: Option<Value>;
+    node := KMB.EmptyTree();
+    weight := 0;
+    while i < DPKV.PKV.NumKVPairs(pkv)
+    {
+      var key: Key := DPKV.PKV.GetKey(pkv, i);
+      var msg: Message := DPKV.PKV.GetMessage(pkv, i);
+      node, oldvalue := KMB.Insert(node, key, msg);
+      weight := weight + BucketWeights.WeightMessageUint64(msg);
+      if oldvalue.Some? {
+        weight := weight - BucketWeights.WeightMessageUint64(oldvalue.value);
+      } else {
+        weight := weight + BucketWeights.WeightKeyUint64(key);
+      }
+      i := i + 1;
+    }
+  }
+}

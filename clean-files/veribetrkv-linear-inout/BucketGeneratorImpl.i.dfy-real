@@ -1,0 +1,88 @@
+  var Length: int  // immutable
+  method Free()
+  {
+    match this {
+      case Basic(biter, height) =>
+        biter.Free();
+      case Compose(top, bot, next, height) =>
+        top.Free();
+        bot.Free();
+    }
+  }
+  method GenLeft() returns (res: BucketIteratorModel.IteratorOutput)
+  {
+    if this.Basic? {
+      res := biter.GetNext();
+    } else {
+      res := next;
+    }
+  }
+  method GenPop()
+  {
+    if self.Basic? {
+      self.biter.IterInc();
+    } else {
+      var top_next: BucketIteratorModel.IteratorOutput := self.top.GenLeft();
+      var bot_next: BucketIteratorModel.IteratorOutput := self.bot.GenLeft();
+      var c: int32;
+      if top_next.Next? && bot_next.Next? {
+        c := cmp(top_next.key, bot_next.key);
+      }
+      if top_next.Next? && bot_next.Next? && c == 0 {
+        self.top.GenPop();
+        self.bot.GenPop();
+        inout self.next := BucketIteratorModel.Next(top_next.key, Merge(top_next.msg, bot_next.msg));
+      } else if top_next.Next? && (bot_next.Next? ==> c < 0) {
+        self.top.GenPop();
+        inout self.next := top_next;
+      } else if bot_next.Next? {
+        self.bot.GenPop();
+        inout self.next := bot_next;
+      } else {
+        inout self.next := BucketIteratorModel.Done;
+      }
+    }
+  }
+  static method GenCompose(top: Generator, bot: Generator) returns (g: Generator)
+  {
+    var top_next: BucketIteratorModel.IteratorOutput := top.GenLeft();
+    var bot_next: BucketIteratorModel.IteratorOutput := bot.GenLeft();
+    var c: int32;
+    if top_next.Next? && bot_next.Next? {
+      c := cmp(top_next.key, bot_next.key);
+    }
+    g := Compose(top, bot, top_next, 0);
+    if top_next.Next? && bot_next.Next? && c == 0 {
+      g.top.GenPop();
+      g.bot.GenPop();
+      inout g.next := BucketIteratorModel.Next(top_next.key, Merge(top_next.msg, bot_next.msg));
+    } else if top_next.Next? && (bot_next.Next? ==> c < 0) {
+      g.top.GenPop();
+      inout g.next := top_next;
+    } else if bot_next.Next? {
+      g.bot.GenPop();
+      inout g.next := bot_next;
+    } else {
+      inout g.next := BucketIteratorModel.Done;
+    }
+  }
+  static method GenFromBucketWithLowerBound(bucket: MutBucket, start: UI.RangeStart) returns (g: Generator)
+  {
+    var biter: BucketIter;
+    match start {
+      case SExclusive(key) =>
+        {
+          biter := BucketIter.IterFindFirstGt(bucket, key);
+        }
+      case SInclusive(key) =>
+        {
+          biter := BucketIter.IterFindFirstGte(bucket, key);
+        }
+      case NegativeInf() =>
+        {
+          biter := BucketIter.IterStart(bucket);
+        }
+    }
+    g := Basic(biter, 1);
+  }
+Dafny program verifier did not attempt verification

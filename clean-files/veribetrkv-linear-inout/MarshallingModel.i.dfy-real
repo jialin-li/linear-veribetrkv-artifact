@@ -1,0 +1,6 @@
+  var Length: int  // immutable
+  function method refToVal(ref: Reference): (v: V)
+  {
+    VUint64(ref)
+  }
+Dafny program verifier did not attempt verification

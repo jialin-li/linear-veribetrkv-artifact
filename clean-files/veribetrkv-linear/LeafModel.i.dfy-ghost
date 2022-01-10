@@ -1,0 +1,66 @@
+// LeafModel.i.dfy
+module LeafModel {
+  function {:opaque} {:fuel 0, 0} repivotLeaf(s: BBC.Variables, ref: BT.G.Reference, node: Node): (s': BBC.Variables)
+    requires BBC.Inv(s)
+    requires s.Ready?
+    requires ref in s.ephemeralIndirectionTable.graph
+    requires ref in s.cache
+    requires node == s.cache[ref]
+    requires node.children.None?
+    requires |node.buckets| == 1
+    decreases s, ref, node
+  {
+    if s.frozenIndirectionTable.Some? && s.frozenIndirectionTable.value.hasEmptyLoc(ref) then
+      s
+    else
+      if !BoundedBucketList(node.buckets, node.pivotTable) then s else ghost var pivot: Key := getMiddleKey(node.buckets[0]); ghost var pivots: seq<Element> := insert(InitPivotTable(), KeyToElement(pivot), 1); ghost var buckets': seq<Bucket> := [SplitBucketLeft(node.buckets[0], pivot), SplitBucketRight(node.buckets[0], pivot)]; ghost var newnode: Node := BT.G.Node(pivots, None, buckets'); ghost var s1: BC.Variables := writeBookkeeping(s, ref, None); ghost var s': BC.Variables := s1.(cache := s1.cache[ref := newnode]); s'
+  }
+  lemma repivotLeafCorrect(s: BBC.Variables, ref: BT.G.Reference, node: Node)
+    requires BBC.Inv(s)
+    requires s.Ready?
+    requires ref in s.ephemeralIndirectionTable.graph
+    requires ref in s.cache
+    requires node == s.cache[ref]
+    requires node.children.None?
+    requires |node.buckets| == 1
+    ensures ghost var s': BC.Variables := repivotLeaf(s, ref, node); s'.Ready? && s'.totalCacheSize() == s.totalCacheSize() && StateBCImpl.WFCache(s'.cache) && betree_next(s, s')
+    decreases s, ref, node
+  {
+    reveal_SplitBucketLeft();
+    reveal_SplitBucketRight();
+    ghost var s': BBC.Variables := repivotLeaf(s, ref, node);
+    reveal_repivotLeaf();
+    if s.frozenIndirectionTable.Some? && s.frozenIndirectionTable.value.hasEmptyLoc(ref) {
+      assert s' == s;
+      assert noop(s, s);
+      return;
+    }
+    if !BoundedBucketList(node.buckets, node.pivotTable) {
+      assert noop(s, s);
+      return;
+    }
+    ghost var pivot: Key := getMiddleKey(node.buckets[0]);
+    ghost var pivots: seq<Element> := insert(InitPivotTable(), KeyToElement(pivot), 1);
+    assert Last(InitPivotTable()) == Keyspace.Max_Element;
+    WFPivotsOfGetMiddleKey(node.buckets[0]);
+    ghost var buckets': seq<Bucket> := [SplitBucketLeft(node.buckets[0], pivot), SplitBucketRight(node.buckets[0], pivot)];
+    ghost var newnode: Node := BT.G.Node(pivots, None, buckets');
+    ghost var s1: BBC.Variables := writeWithNode(s, ref, newnode);
+    reveal_writeBookkeeping();
+    assert s1 == s';
+    PivotBetreeSpecWFNodes.WFApplyRepivot(BT.Repivot(ref, node, pivots, pivot));
+    assert BT.WFNode(newnode);
+    writeCorrect(s, ref, newnode);
+    BT.PivotsHasAllKeys(pivots);
+    assert BT.ApplyRepivot(BT.Repivot(ref, node, pivots, pivot)) == newnode;
+    assert BT.ValidRepivot(BT.Repivot(ref, node, pivots, pivot));
+    ghost var step: BetreeStep := BT.BetreeRepivot(BT.Repivot(ref, node, pivots, pivot));
+    assert BT.ValidBetreeStep(step);
+    assert |BT.BetreeStepOps(step)| == 1;
+    assert BC.Dirty(s, s', ref, newnode);
+    assert BC.OpStep(s, s', BT.BetreeStepOps(step)[0]);
+    BC.MakeTransaction1(s, s', BT.BetreeStepOps(step));
+    assert stepsBetree(s, s', AdvanceOp(UI.NoOp, true), step);
+  }
+}
+Dafny program verifier did not attempt verification

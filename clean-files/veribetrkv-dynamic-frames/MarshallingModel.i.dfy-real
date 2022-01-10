@@ -1,0 +1,11 @@
+// MarshallingModel.i.dfy
+module MarshallingModel {
+  type Key = Keyspace.Element
+  type Reference = BC.Reference
+  type Sector = SM.Sector
+  type Node = SM.Node
+  function method refToVal(ref: Reference): (v: V)
+  {
+    VUint64(ref)
+  }
+}

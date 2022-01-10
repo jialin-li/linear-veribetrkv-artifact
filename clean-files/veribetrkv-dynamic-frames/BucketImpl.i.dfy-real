@@ -1,0 +1,289 @@
+// BucketImpl.i.dfy
+module BucketImpl {
+  type TreeMap = KMB.Node
+  datatype Iterator = Iterator(ghost next: BucketIteratorModel.IteratorOutput, i: uint64, ghost decreaser: int)
+  datatype BucketFormat = BFTree | BFPkv
+  class MutBucket {
+    var format: BucketFormat
+    var tree: KMB.Node?
+    var pkv: PackedKV.Pkv
+    var Weight: uint64
+    var sorted: bool
+    ghost var Repr: set<object>
+    ghost var Bucket: Bucket
+    constructor ()
+    {
+      this.format := BFTree;
+      this.sorted := true;
+      this.Weight := 0;
+      var tmp: Node := KMB.EmptyTree();
+      this.tree := tmp;
+    }
+    constructor InitFromPkv(pkv: PackedKV.Pkv, is_sorted: bool)
+    {
+      this.format := BFPkv;
+      this.pkv := pkv;
+      this.Weight := PackedKV.WeightPkv(pkv);
+      this.tree := null;
+      this.sorted := is_sorted;
+      new;
+    }
+    method GetPkvSorted(must_be_sorted: bool) returns (pkv: PKV.Pkv)
+    {
+      if format.BFTree? {
+        pkv := tree_to_pkv(tree);
+      } else if !must_be_sorted || sorted {
+        pkv := this.pkv;
+      } else {
+        var tree: TreeMap, weight: uint64 := pkv_to_tree(this.pkv);
+        pkv := tree_to_pkv(tree);
+      }
+    }
+    method GetPkv() returns (pkv: PKV.Pkv)
+    {
+      pkv := GetPkvSorted(false);
+    }
+    method WellMarshalled() returns (b: bool)
+    {
+      if format.BFTree? {
+        b := true;
+      } else {
+        if sorted {
+          b := true;
+        } else {
+          b := PackedKV.ComputeIsSorted(pkv);
+        }
+      }
+    }
+    method Empty() returns (result: bool)
+    {
+      if format.BFTree? {
+        result := KMB.Empty(tree);
+      } else {
+        result := 0 == |pkv.keys.offsets| as uint64;
+      }
+    }
+    method WFBucketAt(pivots: Pivots.PivotTable, i: uint64) returns (result: bool)
+    {
+      var e: bool := Empty();
+      if e {
+        return true;
+      }
+      if i < |pivots| as uint64 {
+        var lastkey: Key := GetLastKey();
+        var c: int32 := cmp(lastkey, pivots[i]);
+        if c >= 0 {
+          return false;
+        }
+      }
+      if 0 < i {
+        var firstkey: Key := GetFirstKey();
+        var c: int32 := cmp(pivots[i - 1], firstkey);
+        if 0 < c {
+          return false;
+        }
+      }
+      return true;
+    }
+    method Insert(key: Key, value: Message)
+      modifies Repr
+    {
+      if format.BFPkv? {
+        format := BFTree;
+        tree, Weight := pkv_to_tree(pkv);
+        var psa: Psa := PackedKV.PSA.Psa([], []);
+        pkv := PackedKV.Pkv(psa, psa);
+      }
+      if value.Define? {
+        var cur: Option<Value>;
+        tree, cur := KMB.Insert(tree, key, value);
+        if cur.Some? {
+          Weight := Weight - WeightMessageUint64(cur.value) + WeightMessageUint64(value) as uint64;
+        } else {
+          Weight := Weight + WeightKeyUint64(key) + WeightMessageUint64(value);
+        }
+      }
+    }
+    method Query(key: Key) returns (m: Option<Message>)
+    {
+      if format.BFTree? {
+        m := KMB.Query(tree, key);
+      } else if format.BFPkv? {
+        m := PackedKV.BinarySearchQuery(pkv, key);
+      }
+    }
+    method SplitLeft(pivot: Key) returns (left: MutBucket)
+    {
+      var pkv: PKV.Pkv := GetPkvSorted(true);
+      var pkvleft: Pkv := PKV.SplitLeft(pkv, pivot);
+      left := new MutBucket.InitFromPkv(pkvleft, sorted);
+    }
+    method SplitRight(pivot: Key) returns (right: MutBucket)
+    {
+      var pkv: PKV.Pkv := GetPkvSorted(true);
+      var pkvright: Pkv := PKV.SplitRight(pkv, pivot);
+      right := new MutBucket.InitFromPkv(pkvright, sorted);
+    }
+    method SplitLeftRight(pivot: Key) returns (left: MutBucket, right: MutBucket)
+    {
+      left := SplitLeft(pivot);
+      right := SplitRight(pivot);
+    }
+    static method SplitOneInList(buckets: seq<MutBucket>, slot: uint64, pivot: Key)
+        returns (buckets': seq<MutBucket>)
+    {
+      var l: MutBucket, r: MutBucket := buckets[slot].SplitLeftRight(pivot);
+      buckets' := Replace1with2(buckets, l, r, slot);
+    }
+    method GetFirstKey() returns (result: Key)
+    {
+      if format.BFTree? {
+        result := KMB.MinKey(tree);
+      } else if format.BFPkv? {
+        result := PackedKV.FirstKey(pkv);
+      }
+    }
+    method GetMiddleKey() returns (res: Key)
+    {
+      var pkv: PackedKV.Pkv;
+      if format.BFPkv? {
+        pkv := this.pkv;
+      } else {
+        pkv := tree_to_pkv(tree);
+      }
+      if |pkv.keys.offsets| as uint64 == 0 {
+        return [0];
+      } else {
+        var key: Key := PackedKV.GetKey(pkv, |pkv.keys.offsets| as uint64 / 2);
+        if |key| as uint64 == 0 {
+          return [0];
+        } else {
+          return key;
+        }
+      }
+    }
+    method GetLastKey() returns (result: Key)
+    {
+      if format.BFTree? {
+        result := KMB.MaxKey(tree);
+      } else if format.BFPkv? {
+        result := PackedKV.LastKey(pkv);
+      }
+    }
+    static method computeWeightOfSeq(buckets: seq<MutBucket>) returns (weight: uint64)
+    {
+      var w: uint64 := 0;
+      var j: uint64 := 0;
+      while j < |buckets| as uint64
+      {
+        w := w + buckets[j].Weight;
+        j := j + 1;
+      }
+      return w;
+    }
+    method Clone() returns (bucket': MutBucket)
+    {
+      if format.BFPkv? {
+        bucket' := new MutBucket.InitFromPkv(pkv, sorted);
+        return;
+      }
+      var pkv: PackedKV.Pkv;
+      if format.BFTree? {
+        pkv := tree_to_pkv(tree);
+      }
+      bucket' := new MutBucket.InitFromPkv(pkv, true);
+    }
+    static method CloneSeq(buckets: seq<MutBucket>) returns (buckets': seq<MutBucket>)
+    {
+      var ar: array?<MutBucket?> := new MutBucket?[|buckets| as uint64];
+      var j: uint64 := 0;
+      while j < |buckets| as uint64
+        modifies ar
+      {
+        ar[j] := buckets[j].Clone();
+        j := j + 1;
+      }
+      buckets' := ar[..];
+    }
+    static function method makeIter(ghost bucket: Bucket, idx: uint64): (it': Iterator)
+    {
+      Iterator(if idx as int == |bucket.keys| then BucketIteratorModel.Done else BucketIteratorModel.Next(bucket.keys[idx], bucket.msgs[idx]), idx, |bucket.keys| - idx as int)
+    }
+    method IterStart() returns (it': Iterator)
+    {
+      it' := makeIter(I(), 0);
+    }
+    method IterFindFirstGte(key: Key) returns (it': Iterator)
+    {
+      var pkv: PKV.Pkv := GetPkv();
+      var i: uint64 := PSA.BinarySearchIndexOfFirstKeyGte(pkv.keys, key);
+      it' := makeIter(I(), i);
+    }
+    method IterFindFirstGt(key: Key) returns (it': Iterator)
+    {
+      var pkv: PKV.Pkv := GetPkv();
+      var i: uint64 := PSA.BinarySearchIndexOfFirstKeyGt(pkv.keys, key);
+      it' := makeIter(I(), i);
+    }
+    method IterInc(it: Iterator) returns (it': Iterator)
+    {
+      it' := makeIter(I(), it.i + 1);
+    }
+    method GetNext(it: Iterator) returns (next: BucketIteratorModel.IteratorOutput)
+    {
+      var pkv: PackedKV.Pkv;
+      if format.BFPkv? {
+        pkv := this.pkv;
+      } else {
+        pkv := tree_to_pkv(tree);
+      }
+      if it.i == |pkv.keys.offsets| as uint64 {
+        next := BucketIteratorModel.Done;
+      } else {
+        next := BucketIteratorModel.Next(PackedKV.GetKey(pkv, it.i), PackedKV.GetMessage(pkv, it.i));
+      }
+    }
+  }
+  method pkv_to_tree(pkv: PackedKV.Pkv) returns (tree: TreeMap, weight: uint64)
+  {
+    tree, weight := KMBPKVOps.FromPkv(pkv);
+  }
+  method tree_to_pkv(tree: TreeMap) returns (pkv: PackedKV.Pkv)
+  {
+    pkv := KMBPKVOps.ToPkv(tree);
+  }
+  method pkvList2BucketList(pkvs: seq<PKV.Pkv>, sorted: bool) returns (buckets: seq<MutBucket>)
+  {
+    var abuckets: array?<MutBucket?> := new MutBucket?[|pkvs| as uint64];
+    var i: uint64 := 0;
+    while i < |pkvs| as uint64
+    {
+      abuckets[i] := new MutBucket.InitFromPkv(pkvs[i], sorted);
+      i := i + 1;
+    }
+    buckets := abuckets[..];
+  }
+  method PartialFlush(top: MutBucket, bots: seq<MutBucket>, pivots: seq<Key>)
+      returns (newtop: MutBucket, newbots: seq<MutBucket>)
+  {
+    var i: uint64 := 0;
+    var botPkvs: array<PKV.Pkv> := new PKV.Pkv[|bots| as uint64];
+    var sorted: bool := true;
+    while i < |bots| as uint64
+    {
+      botPkvs[i] := bots[i].GetPkv();
+      if !bots[i].sorted {
+        sorted := false;
+      }
+      i := i + 1;
+    }
+    var botPkvsSeq: seq<PKV.Pkv> := botPkvs[..];
+    var topPkv: PKV.Pkv := top.GetPkv();
+    if !top.sorted {
+      sorted := false;
+    }
+    var result: PartialFlushResult := DPKV.PartialFlush(topPkv, pivots, botPkvsSeq);
+    newtop := new MutBucket.InitFromPkv(result.top, sorted);
+    newbots := pkvList2BucketList(result.bots, sorted);
+  }
+}

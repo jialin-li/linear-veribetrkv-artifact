@@ -1,0 +1,138 @@
+// NodeImpl.i.dfy
+module NodeImpl {
+  datatype Node = Node(pivotTable: Pivots.PivotTable, children: Option<seq<BT.G.Reference>>, buckets: lseq<BucketImpl.MutBucket>) {
+    static method Alloc(pivotTable: Pivots.PivotTable, children: Option<seq<BT.G.Reference>>, buckets: lseq<BucketImpl.MutBucket>)
+        returns (node: Node)
+    {
+      node := Node(pivotTable, children, buckets);
+    }
+    static method EmptyNode() returns (node: Node)
+    {
+      var mutbucket: MutBucket := MutBucket.Alloc();
+      var buckets: lseq<BucketImpl.MutBucket> := lseq_alloc(1);
+      var _inout_tmp_0: lseq<BucketImpl.MutBucket>;
+      _inout_tmp_0 := lseq_give_inout(inout buckets, 0, mutbucket);
+      buckets := _inout_tmp_0;
+      node := Node(Pivots.InitPivotTable(), None, buckets);
+    }
+    method BoundedBucket(pivots: Pivots.PivotTable, slot: uint64) returns (result: bool)
+    {
+      var pkv: PKV.Pkv := lseq_peek(buckets, slot).GetPkv();
+      var bounded: bool := true;
+      var i: uint64 := 0 as uint64;
+      var len: uint64 := PKV.NumKVPairs(pkv);
+      while i < len && bounded
+      {
+        var key: Key := PKV.GetKey(pkv, i);
+        bounded := Pivots.ComputeBoundedKey(pivots, key);
+        i := i + 1;
+      }
+      return bounded;
+    }
+    method BucketWellMarshalled(slot: uint64) returns (result: bool)
+    {
+      result := lseq_peek(buckets, slot).WellMarshalled();
+    }
+    method BucketsWellMarshalled() returns (result: bool)
+    {
+      var i: uint64 := 0;
+      while i < lseq_length_raw(buckets)
+      {
+        var bwm: bool := lseq_peek(buckets, i).WellMarshalled();
+        if !bwm {
+          return false;
+        }
+        i := i + 1;
+      }
+      return true;
+    }
+    method UpdateSlot(inout old_self: Node, slot: uint64, bucket: BucketImpl.MutBucket, childref: BT.G.Reference)
+        returns (self: Node)
+    {
+      self := old_self;
+      var replaced: BucketImpl.MutBucket, _inout_tmp_0: lseq<BucketImpl.MutBucket> := lseq_swap_inout(inout self.buckets, slot, bucket);
+      self := self.(buckets := _inout_tmp_0);
+      var _inout_tmp_1: Option<seq<BT.G.Reference>> := Some(SeqIndexUpdate(self.children.value, slot, childref));
+      self := self.(children := _inout_tmp_1);
+      var _: () := FreeMutBucket(replaced);
+    }
+    method SplitParent(inout old_self: Node, slot: uint64, pivot: Key, left_childref: BT.G.Reference, right_childref: BT.G.Reference)
+        returns (self: Node)
+    {
+      self := old_self;
+      var _inout_tmp_0: seq<Element> := Sequences.Insert(self.pivotTable, Pivots.Keyspace.Element(pivot), slot + 1);
+      self := self.(pivotTable := _inout_tmp_0);
+      var _inout_tmp_1: lseq<MutBucket>;
+      _inout_tmp_1 := MutBucket.SplitOneInList(inout self.buckets, slot, pivot);
+      self := self.(buckets := _inout_tmp_1);
+      var childrenReplaced: seq<BT.G.Reference> := Replace1with2(self.children.value, left_childref, right_childref, slot);
+      var _inout_tmp_2: Option<seq<BT.G.Reference>> := Some(childrenReplaced);
+      self := self.(children := _inout_tmp_2);
+    }
+    method CutoffNodeAndKeepLeft(pivot: Key) returns (node: Node)
+    {
+      var cLeft: uint64 := Pivots.ComputeCutoffForLeft(this.pivotTable, pivot);
+      var leftPivots: PivotTable := Pivots.ComputeSplitLeft(this.pivotTable, pivot, cLeft);
+      var leftChildren: Option<seq<BT.G.Reference>> := if this.children.Some? then Some(this.children.value[..cLeft + 1]) else None;
+      var splitBucket: MutBucket := lseq_peek(buckets, cLeft).SplitLeft(pivot);
+      var slice: lseq<MutBucket> := MutBucket.CloneSeq(this.buckets, 0, cLeft);
+      var leftBuckets: lseq<MutBucket> := InsertLSeq(slice, splitBucket, cLeft);
+      node := Node(leftPivots, leftChildren, leftBuckets);
+    }
+    method CutoffNodeAndKeepRight(pivot: Key) returns (node: Node)
+    {
+      var cRight: uint64 := Pivots.ComputeCutoffForRight(this.pivotTable, pivot);
+      var rightPivots: PivotTable := Pivots.ComputeSplitRight(this.pivotTable, pivot, cRight);
+      var rightChildren: Option<seq<BT.G.Reference>> := if this.children.Some? then Some(this.children.value[cRight..]) else None;
+      var splitBucket: MutBucket := lseq_peek(buckets, cRight).SplitRight(pivot);
+      var slice: lseq<MutBucket> := MutBucket.CloneSeq(buckets, cRight + 1, lseq_length_raw(buckets));
+      var rightBuckets: lseq<MutBucket> := InsertLSeq(slice, splitBucket, 0);
+      node := Node(rightPivots, rightChildren, rightBuckets);
+    }
+    method CutoffNode(lbound: Key, rbound: Option<Key>) returns (node: Node)
+    {
+      match rbound {
+        case None() =>
+          {
+            node := CutoffNodeAndKeepRight(lbound);
+          }
+        case Some(rbound) =>
+          {
+            var node1 := CutoffNodeAndKeepLeft(rbound);
+            node := node1.CutoffNodeAndKeepRight(lbound);
+            var _ := FreeNode(node1);
+          }
+      }
+    }
+    method SplitChildLeft(num_children_left: uint64) returns (node: Node)
+    {
+      var slice: lseq<MutBucket> := MutBucket.CloneSeq(buckets, 0, num_children_left);
+      node := Node(pivotTable[..num_children_left + 1], if children.Some? then Some(children.value[..num_children_left]) else None, slice);
+    }
+    method SplitChildRight(num_children_left: uint64) returns (node: Node)
+    {
+      var slice: lseq<MutBucket> := MutBucket.CloneSeq(buckets, num_children_left, lseq_length_raw(buckets));
+      node := Node(pivotTable[num_children_left..], if children.Some? then Some(children.value[num_children_left..]) else None, slice);
+    }
+    method InsertKeyValue(inout old_self: Node, key: Key, msg: Message)
+        returns (self: Node)
+    {
+      self := old_self;
+      var r: uint64 := Pivots.ComputeRoute(self.pivotTable, key);
+      var b: BucketImpl.MutBucket, _inout_tmp_0: lseq<BucketImpl.MutBucket> := lseq_take_inout(inout self.buckets, r);
+      self := self.(buckets := _inout_tmp_0);
+      var _inout_tmp_1: MutBucket;
+      _inout_tmp_1 := b.Insert(inout b, key, msg);
+      b := _inout_tmp_1;
+      var _inout_tmp_2: lseq<BucketImpl.MutBucket>;
+      _inout_tmp_2 := lseq_give_inout(inout self.buckets, r, b);
+      self := self.(buckets := _inout_tmp_2);
+    }
+  }
+  function method FreeNode(node: Node): ()
+  {
+    var Node(_: Pivots.PivotTable, _: Option<seq<BT.G.Reference>>, buckets: lseq<BucketImpl.MutBucket>) := node;
+    FreeMutBucketSeq(buckets)
+  }
+}
+Dafny program verifier did not attempt verification

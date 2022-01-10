@@ -1,0 +1,5 @@
+// CommitterModel.i.dfy
+module CommitterModel {
+  datatype Status = StatusLoadingSuperblock | StatusLoadingOther | StatusReady
+  datatype CM = CM(status: Status, journalist: JournalistModel.JournalistModel, frozenLoc: Option<Location>, isFrozen: bool, frozenJournalPosition: uint64, superblockWrite: Option<JC.ReqId>, outstandingJournalWrites: set<JC.ReqId>, superblock: Superblock, newSuperblock: Option<Superblock>, whichSuperblock: uint64, commitStatus: JC.CommitStatus, journalFrontRead: Option<JC.ReqId>, journalBackRead: Option<JC.ReqId>, superblock1Read: Option<JC.ReqId>, superblock2Read: Option<JC.ReqId>, superblock1: JC.SuperblockReadResult, superblock2: JC.SuperblockReadResult, syncReqs: MutableMapModel.LinearHashMap<JC.SyncReqStatus>)
+}

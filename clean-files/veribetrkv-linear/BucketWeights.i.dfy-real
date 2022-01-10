@@ -1,0 +1,17 @@
+// BucketWeights.i.dfy
+module BucketWeights {
+  function method WeightKeyUint64(key: Key): (w: uint64)
+  {
+    4 + |key| as uint64
+  }
+  function method WeightMessageUint64(msg: Message): (w: uint64)
+  {
+    match msg {
+      case Define(value) =>
+        4 + |value| as uint64
+      case Update(delta) =>
+        0
+    }
+  }
+}
+Dafny program verifier did not attempt verification

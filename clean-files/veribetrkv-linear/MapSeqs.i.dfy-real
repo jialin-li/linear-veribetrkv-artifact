@@ -1,0 +1,7 @@
+// MapSeqs.i.dfy
+module MapSeqs {
+    reveals SeqPair
+    reveals SeqPair
+  datatype   SeqPair = SeqPair(keys: seq<Key>, msgs: seq<Message>)
+}
+Dafny program verifier did not attempt verification

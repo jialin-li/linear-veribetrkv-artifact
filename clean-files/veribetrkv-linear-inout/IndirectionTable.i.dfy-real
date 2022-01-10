@@ -1,0 +1,366 @@
+  var Length: int  // immutable
+  static method Alloc(loc: Location) returns (r: IndirectionTable)
+  {
+    var hashMap: LinearHashMap<Entry> := LinearMutableMap.Constructor<Entry>(128);
+    LinearMutableMap.Insert(inout hashMap, BT.G.Root(), Entry(Some(loc), [], 1));
+    r := IndirectionTable(hashMap, lNone, BT.G.Root(), None, Locs(hashMap), Graph(hashMap), PredCounts(hashMap));
+  }
+  static method AllocEmpty() returns (r: IndirectionTable)
+  {
+    var hashMap: LinearHashMap<Entry> := LinearMutableMap.Constructor<Entry>(128);
+    LinearMutableMap.Insert(inout hashMap, BT.G.Root(), Entry(None, [], 1));
+    r := IndirectionTable(hashMap, lNone, 0, None, Locs(hashMap), Graph(hashMap), PredCounts(hashMap));
+  }
+  method Free()
+  {
+    var IndirectionTable(t: HashMap, garbageQueue: lOption<GarbageQueue>, refUpperBound: uint64, findLoclessIterator: Option<LinearMutableMap.SimpleIterator>, _: map<BT.G.Reference, Location>, _: map<BT.G.Reference, seq<BT.G.Reference>>, _: map<BT.G.Reference, int>) := this;
+    LinearMutableMap.Destructor(t);
+    match garbageQueue {
+      case lNone() =>
+        {
+        }
+      case lSome(gq) =>
+        {
+          gq.Free();
+        }
+    }
+  }
+  method Clone() returns (cloned: IndirectionTable)
+  {
+    var IndirectionTable(t: HashMap, garbageQueue: lOption<GarbageQueue>, refUpperBound: uint64, findLoclessIterator: Option<LinearMutableMap.SimpleIterator>, locs: map<BT.G.Reference, Location>, graph: map<BT.G.Reference, seq<BT.G.Reference>>, predCounts: map<BT.G.Reference, int>) := this;
+    var t': LinearHashMap<Entry> := LinearMutableMap.Clone(t);
+    cloned := IndirectionTable(t', lNone, refUpperBound, None, locs, graph, predCounts);
+  }
+  method GetEntry(ref: BT.G.Reference) returns (e: Option<Entry>)
+  {
+    e := LinearMutableMap.Get(this.t, ref);
+  }
+  method HasEmptyLoc(ref: BT.G.Reference) returns (b: bool)
+  {
+    var entry: Option<Entry> := LinearMutableMap.Get(this.t, ref);
+    b := entry.Some? && entry.value.loc.None?;
+  }
+  method UpdateGhost()
+  {
+  }
+  method RemoveLoc(ref: BT.G.Reference) returns (oldLoc: Option<Location>)
+  {
+    var it: SimpleIterator := LinearMutableMap.FindSimpleIter(self.t, ref);
+    var oldEntry: IteratorOutput<Entry> := LinearMutableMap.SimpleIterOutput(self.t, it);
+    var predCount: uint64 := oldEntry.value.predCount;
+    var succs: seq<BT.G.Reference> := oldEntry.value.succs;
+    LinearMutableMap.UpdateByIter(inout self.t, it, Entry(None, succs, predCount));
+    inout self.findLoclessIterator := None;
+    self.UpdateGhost();
+    oldLoc := oldEntry.value.loc;
+  }
+  method AddLocIfPresent(ref: BT.G.Reference, loc: Location) returns (added: bool)
+  {
+    var it: SimpleIterator := LinearMutableMap.FindSimpleIter(self.t, ref);
+    var oldEntry: IteratorOutput<Entry> := LinearMutableMap.SimpleIterOutput(self.t, it);
+    added := oldEntry.Next? && oldEntry.value.loc.None?;
+    if added {
+      LinearMutableMap.UpdateByIter(inout self.t, it, Entry(Some(loc), oldEntry.value.succs, oldEntry.value.predCount));
+      self.UpdateGhost();
+    }
+  }
+  method RemoveRef(ref: BT.G.Reference) returns (oldLoc: Option<Location>)
+  {
+    var oldEntry: Option<Entry> := LinearMutableMap.RemoveAndGet(inout self.t, ref);
+    self.garbageQueue.value.Remove(ref);
+    self.UpdatePredCounts(ref, [], oldEntry.value.succs);
+    oldLoc := if oldEntry.Some? then oldEntry.value.loc else None;
+    inout self.findLoclessIterator := None;
+    self.UpdateGhost();
+  }
+  method PredInc(ref: BT.G.Reference)
+  {
+    var oldEntryOpt: Option<Entry> := LinearMutableMap.Get(self.t, ref);
+    var oldEntry: Entry := oldEntryOpt.value;
+    var newEntry: Entry := oldEntry.(predCount := oldEntry.predCount + 1);
+    LinearMutableMap.Insert(inout self.t, ref, newEntry);
+    if oldEntry.predCount == 0 {
+      self.garbageQueue.value.Remove(ref);
+    }
+  }
+  method PredDec(ref: BT.G.Reference)
+  {
+    var oldEntryOpt: Option<Entry> := LinearMutableMap.Get(self.t, ref);
+    var oldEntry: Entry := oldEntryOpt.value;
+    var newEntry: Entry := oldEntry.(predCount := oldEntry.predCount - 1);
+    LinearMutableMap.Insert(inout self.t, ref, newEntry);
+    if oldEntry.predCount == 1 {
+      self.garbageQueue.value.Add(ref);
+    }
+  }
+  method UpdatePredCounts(ghost changingRef: BT.G.Reference, newSuccs: seq<BT.G.Reference>, oldSuccs: seq<BT.G.Reference>)
+  {
+    var idx: uint64 := 0;
+    while idx < |newSuccs| as uint64
+    {
+      var ref: NativeTypes.uint64 := newSuccs[idx];
+      self.PredInc(ref);
+      idx := idx + 1;
+    }
+    var idx2: uint64 := 0;
+    while idx2 < |oldSuccs| as uint64
+    {
+      self.PredDec(oldSuccs[idx2]);
+      idx2 := idx2 + 1;
+    }
+  }
+  method {:timeLimitMultiplier 2} UpdateAndRemoveLoc(ref: BT.G.Reference, succs: seq<BT.G.Reference>) returns (oldLoc: Option<Location>)
+  {
+    var oldEntry: Option<Entry> := LinearMutableMap.Get(self.t, ref);
+    var predCount: uint64 := if oldEntry.Some? then oldEntry.value.predCount else 0;
+    if oldEntry.None? {
+      self.garbageQueue.value.Add(ref);
+    }
+    LinearMutableMap.Insert(inout self.t, ref, Entry(None, succs, predCount));
+    self.UpdatePredCounts(ref, succs, if oldEntry.Some? then oldEntry.value.succs else []);
+    if ref > self.refUpperBound {
+      inout self.refUpperBound := ref;
+    }
+    oldLoc := if oldEntry.Some? && oldEntry.value.loc.Some? then oldEntry.value.loc else None;
+    inout self.findLoclessIterator := None;
+    self.UpdateGhost();
+  }
+  static method {:fuel ValInGrammar, 3} ValToHashMap(a: seq<V>) returns (s: lOption<HashMap>)
+  {
+    var i: uint64 := 0;
+    var success: bool := true;
+    var mutMap: LinearHashMap<Entry> := LinearMutableMap.Constructor<Entry>(1024);
+    while i < |a| as uint64
+    {
+      var tuple: V := a[i];
+      var ref: uint64 := tuple.t[0 as uint64].u;
+      var addr: uint64 := tuple.t[1 as uint64].u;
+      var len: uint64 := tuple.t[2 as uint64].u;
+      var succs: seq<uint64> := tuple.t[3 as uint64].ua;
+      var graphRef: Option<Entry> := LinearMutableMap.Get(mutMap, ref);
+      var loc: Location := Location(addr, len);
+      if graphRef.Some? || !ValidNodeLocation(loc) || |succs| as uint64 > MaxNumChildrenUint64() {
+        success := false;
+        break;
+      } else {
+        LinearMutableMap.Insert(inout mutMap, ref, Entry(Some(loc), succs, 0));
+        i := i + 1;
+      }
+    }
+    if success {
+      s := lSome(mutMap);
+    } else {
+      LinearMutableMap.Destructor(mutMap);
+      s := lNone;
+    }
+  }
+  static method {:timeLimitMultiplier 2} ComputeRefCountsInnerLoop(inout tbl': HashMap, tbl: HashMap, it: LinearMutableMap.Iterator<Entry>)
+      returns (success: bool, it': LinearMutableMap.Iterator<Entry>)
+  {
+    var succs: seq<BT.G.Reference> := it.next.value.succs;
+    var i: uint64 := 0;
+    success := true;
+    while i < |succs| as uint64
+    {
+      var ref: NativeTypes.uint64 := succs[i];
+      var oldEntry: Option<Entry> := LinearMutableMap.Get(tbl', ref);
+      if oldEntry.Some? {
+        var newEntry: Entry := oldEntry.value.(predCount := oldEntry.value.predCount + 1);
+        LinearMutableMap.Insert(inout tbl', ref, newEntry);
+        i := i + 1;
+      } else {
+        success := false;
+        break;
+      }
+    }
+    it' := LinearMutableMap.IterInc(tbl, it);
+  }
+  static method ComputeRefCounts(tbl: HashMap) returns (tbl': lOption<HashMap>)
+  {
+    var t1: LinearHashMap<Entry> := LinearMutableMap.Clone(tbl);
+    var oldEntryOpt: Option<Entry> := LinearMutableMap.Get(t1, BT.G.Root());
+    var oldEntry: Entry := oldEntryOpt.value;
+    LinearMutableMap.Insert(inout t1, BT.G.Root(), oldEntry.(predCount := 1));
+    var it: Iterator<Entry> := LinearMutableMap.IterStart(tbl);
+    var success: bool := true;
+    while it.next.Next?
+    {
+      success, it := ComputeRefCountsInnerLoop(inout t1, tbl, it);
+      if !success {
+        break;
+      }
+    }
+    if success {
+      tbl' := lSome(t1);
+    } else {
+      LinearMutableMap.Destructor(t1);
+      tbl' := lNone;
+    }
+  }
+  static method MakeGarbageQueue(t: HashMap) returns (q: USeq.USeq)
+  {
+    q := USeq.USeq.Alloc();
+    var it: Iterator<Entry> := LinearMutableMap.IterStart(t);
+    while it.next.Next?
+    {
+      if it.next.value.predCount == 0 {
+        q.Add(it.next.key);
+      }
+      it := LinearMutableMap.IterInc(t, it);
+    }
+  }
+  static method ComputeRefUpperBound(t: HashMap) returns (r: uint64)
+  {
+    var it: Iterator<Entry> := LinearMutableMap.IterStart(t);
+    var refUpperBound: uint64 := 0;
+    while it.next.Next?
+    {
+      if it.next.key > refUpperBound {
+        refUpperBound := it.next.key;
+      }
+      it := LinearMutableMap.IterInc(t, it);
+    }
+    r := refUpperBound;
+  }
+  static method ValToIndirectionTable(v: V) returns (s: lOption<IndirectionTable>)
+  {
+    if |v.a| as uint64 <= MaxSizeUint64() {
+      var res: lOption<HashMap> := ValToHashMap(v.a);
+      match res {
+        case lSome(t) =>
+          {
+            var rootRef := LinearMutableMap.Get(t, BT.G.Root());
+            if rootRef.Some? {
+              var t1opt := ComputeRefCounts(t);
+              LinearMutableMap.Destructor(t);
+              match t1opt {
+                case lSome(t1) =>
+                  {
+                    var q := MakeGarbageQueue(t1);
+                    var refUpperBound := ComputeRefUpperBound(t1);
+                    s := lSome(IndirectionTable(t1, lSome(q), refUpperBound, None, Locs(t1), Graph(t1), PredCounts(t1)));
+                  }
+                case lNone =>
+                  {
+                    s := lNone;
+                  }
+              }
+            } else {
+              LinearMutableMap.Destructor(t);
+              s := lNone;
+            }
+          }
+        case lNone() =>
+          {
+            s := lNone;
+          }
+      }
+    } else {
+      s := lNone;
+    }
+  }
+  static function method IndirectionTableGrammar(): G
+  {
+    GArray(GTuple([GUint64, GUint64, GUint64, GUint64Array]))
+  }
+  method {:timeLimitMultiplier 3} IndirectionTableToVal() returns (v: V, size: uint64)
+  {
+    var count: uint64 := this.t.count as uint64;
+    var a: array<V> := new V[count];
+    var it: Iterator<Entry> := LinearMutableMap.IterStart(this.t);
+    var i: uint64 := 0;
+    size := 0;
+    while it.next.Next?
+    {
+      var (ref: uint64, locOptGraph: Entry) := (it.next.key, it.next.value);
+      var locOpt: Option<Location> := locOptGraph.loc;
+      var succs: seq<BT.G.Reference> := locOptGraph.succs;
+      var loc: Location := locOpt.value;
+      var childrenVal: V := VUint64Array(succs);
+      var vi: V := VTuple([VUint64(ref), VUint64(loc.addr), VUint64(loc.len), childrenVal]);
+      a[i] := vi;
+      i := i + 1;
+      it := LinearMutableMap.IterInc(this.t, it);
+      size := size + 32 + 8 * |succs| as uint64;
+    }
+    v := VArray(a[..]);
+    size := size + 8;
+  }
+  static method BitmapInitUpTo(inout bm: BitmapImpl.Bitmap, upTo: uint64)
+  {
+    var i: uint64 := 0;
+    while i < upTo
+    {
+      bm.Set(i);
+      i := i + 1;
+    }
+  }
+  method InitLocBitmap() returns (success: bool, bm: BitmapImpl.Bitmap)
+  {
+    bm := BitmapImpl.Bitmap.Constructor(NumBlocksUint64());
+    BitmapInitUpTo(inout bm, MinNodeBlockIndexUint64());
+    var it: Iterator<Entry> := LinearMutableMap.IterStart(this.t);
+    success := true;
+    while it.next.Next?
+    {
+      var loc: uint64 := it.next.value.loc.value.addr;
+      var locIndex: uint64 := loc / NodeBlockSizeUint64();
+      if locIndex < NumBlocksUint64() {
+        var isSet: bool := bm.GetIsSet(locIndex);
+        if !isSet {
+          it := LinearMutableMap.IterInc(this.t, it);
+          bm.Set(locIndex);
+        } else {
+          success := false;
+          break;
+        }
+      } else {
+        success := false;
+        break;
+      }
+    }
+  }
+  method FindDeallocable() returns (ref: Option<BT.G.Reference>)
+  {
+    ref := this.garbageQueue.value.FirstOpt();
+  }
+  function method GetSize(): (size: uint64)
+  {
+    this.t.count
+  }
+  method FindRefWithNoLoc() returns (ref: Option<BT.G.Reference>)
+  {
+    var findLoclessIterator: Option<LinearMutableMap.SimpleIterator> := self.findLoclessIterator;
+    var it: LinearMutableMap.SimpleIterator;
+    if findLoclessIterator.Some? {
+      it := findLoclessIterator.value;
+    } else {
+      it := LinearMutableMap.SimpleIterStart(self.t);
+    }
+    while true
+    {
+      var next: IteratorOutput<Entry> := LinearMutableMap.SimpleIterOutput(self.t, it);
+      if next.Next? {
+        if next.value.loc.None? {
+          inout self.findLoclessIterator := Some(it);
+          ref := Some(next.key);
+          break;
+        } else {
+          it := LinearMutableMap.SimpleIterInc(self.t, it);
+        }
+      } else {
+        inout self.findLoclessIterator := Some(it);
+        ref := None;
+        break;
+      }
+    }
+  }
+  method GetRefUpperBound() returns (r: uint64)
+  {
+    r := this.refUpperBound;
+  }
+  function method MaxSizeUint64(): uint64
+  {
+    IndirectionTableMaxSizeUint64()
+  }
+Dafny program verifier did not attempt verification

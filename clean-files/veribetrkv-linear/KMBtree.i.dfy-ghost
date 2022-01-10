@@ -1,0 +1,25 @@
+// KMBtree.i.dfy
+module KMBtreeModel refines BtreeModel {
+  type Value = Messages.Message
+}
+module LKMBtree refines LMutableBtree {
+  function method MaxKeysPerLeaf(): uint64
+    ensures 2 < MaxKeysPerLeaf() as int < Uint64UpperBound() / 4
+  {
+    64
+  }
+  function method MaxChildren(): uint64
+    ensures 3 < MaxChildren() as int < Uint64UpperBound() / 4
+  {
+    64
+  }
+  function method DefaultValue(): Value
+  {
+    Model.Messages.DefineDefault()
+  }
+  function method DefaultKey(): Key
+  {
+    []
+  }
+}
+Dafny program verifier did not attempt verification

@@ -1,0 +1,55 @@
+// PackedKVMarshalling.i.dfy
+module PackedKVMarshalling {
+  function method grammar(): G
+  {
+    GTuple([PSAMarshalling.grammar(), PSAMarshalling.grammar()])
+  }
+  method CheckStringLengths(offsets: seq<uint32>) returns (b: bool)
+  {
+    var i: uint64 := 0;
+    if 0 < |offsets| as uint64 && offsets[0] as uint64 > KeyType.MaxLen() {
+      return false;
+    }
+    if |offsets| as nat <= 1 {
+      return true;
+    }
+    while i + 1 < |offsets| as uint64
+    {
+      var oi: int64 := offsets[i] as int64;
+      var oip1: int64 := offsets[i + 1] as int64;
+      if KeyType.MaxLen() as int64 < oip1 - oi {
+        return false;
+      }
+      i := i + 1;
+    }
+    return true;
+  }
+  method ComputeWF(pkv: Pkv) returns (result: bool)
+  {
+    var vkl: bool := ComputeValidStringLens(pkv.keys, KeyType.MaxLen());
+    var vml: bool := ComputeValidStringLens(pkv.messages, ValueType.MaxLen());
+    result := PSA.psaNumStrings(pkv.keys) == PSA.psaNumStrings(pkv.messages) && vkl && vml;
+  }
+  method FromVal(v: V) returns (pkv: Option<Pkv>)
+  {
+    var okeys: Option<Psa> := PSAMarshalling.FromVal(v.t[0]);
+    var omessages: Option<Psa> := PSAMarshalling.FromVal(v.t[1]);
+    if okeys.Some? && omessages.Some? {
+      var tmp: Pkv := Pkv(okeys.value, omessages.value);
+      var wf: bool := ComputeWF(tmp);
+      if wf {
+        pkv := Some(tmp);
+      } else {
+        pkv := None;
+      }
+    } else {
+      pkv := None;
+    }
+  }
+  method ToVal(pkv: Pkv) returns (v: V)
+  {
+    var vkeys: V := PSAMarshalling.ToVal(pkv.keys);
+    var vmessages: V := PSAMarshalling.ToVal(pkv.messages);
+    v := VTuple([vkeys, vmessages]);
+  }
+}

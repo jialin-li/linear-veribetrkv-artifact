@@ -1,0 +1,112 @@
+// LinearLru.i.dfy
+module LinearLru {
+  export
+  datatype  LinearLru = LinearLru(dlist: DList.DList<uint64>, ptr_map: LinearMutableMap.LinearHashMap<uint64>) {
+    predicate Inv()
+      decreases this
+    {
+      ghost var q: seq<uint64> := this.dlist.Seq();
+      LinearMutableMap.Inv(this.ptr_map) &&
+      this.dlist.Inv() &&
+      LruModel.WF(q) &&
+      LruModel.I(q) == this.ptr_map.contents.Keys &&
+      (forall i: int {:trigger q[i] in this.ptr_map.contents} :: 
+        (0 <= i < |q| ==>
+          q[i] in this.ptr_map.contents) &&
+        (0 <= i < |q| ==>
+          this.dlist.Index(this.ptr_map.contents[q[i]]) as int == i)) &&
+      forall x: uint64 {:trigger this.ptr_map.contents[x]} {:trigger x in this.ptr_map.contents} :: 
+        (x in this.ptr_map.contents ==>
+          this.dlist.ValidPtr(this.ptr_map.contents[x])) &&
+        (x in this.ptr_map.contents ==>
+          this.dlist.Get(this.ptr_map.contents[x]) == x)
+    }
+    function Queue(): (q: LruModel.LruQueue)
+      ensures this.Inv() ==> LruModel.WF(q)
+      decreases this
+    {
+      this.dlist.Seq()
+    }
+    static method Alloc() returns (lru: LinearLru)
+      ensures lru.Inv()
+      ensures lru.Queue() == LruModel.Empty()
+    {
+      var size: uint64 := 128;
+      var dlist: DList<uint64> := DList.DList<uint64>.Alloc(size + 1);
+      var ptr_map: LinearHashMap<uint64> := LinearMutableMap.Constructor(size);
+      lru := LinearLru(dlist, ptr_map);
+      assert lru.dlist.Seq() == [];
+      assert lru.Queue() == LruModel.Empty();
+    }
+    method Free()
+      decreases this
+    {
+      var LinearLru(dlist: DList.DList<uint64>, ptr_map: LinearMutableMap.LinearHashMap<uint64>) := this;
+      dlist.Free();
+      LinearMutableMap.Destructor(ptr_map);
+    }
+    method Remove(inout old_self: LinearLru, x: uint64) returns (self: LinearLru)
+      requires old_self.Inv()
+      ensures self.Inv()
+      ensures self.Queue() == LruModel.Remove(old_self.Queue(), x)
+      decreases this, old_self, x
+    {
+      self := old_self;
+      ghost var q: seq<uint64> := self.dlist.Seq();
+      LruModel.LruRemove'(q, x);
+      var removed: Option<uint64>, _inout_tmp_1: LinearHashMap<uint64> := LinearMutableMap.RemoveAndGet(inout self.ptr_map, x);
+      self := self.(ptr_map := _inout_tmp_1);
+      if removed.Some? {
+        var Some(p: uint64) := removed;
+        var _inout_tmp_0: DList<uint64>;
+        _inout_tmp_0 := self.dlist.Remove(inout self.dlist, p);
+        self := self.(dlist := _inout_tmp_0);
+      }
+    }
+    method Use(inout old_self: LinearLru, x: uint64) returns (self: LinearLru)
+      requires old_self.Inv()
+      requires |LruModel.I(old_self.Queue())| < 18446744073709551616 / 8
+      ensures self.Inv()
+      ensures self.Queue() == LruModel.Use(old_self.Queue(), x)
+      decreases this, old_self, x
+    {
+      self := old_self;
+      LruModel.QueueCount(self.Queue());
+      LruModel.LruRemove'(self.Queue(), x);
+      var _inout_tmp_0: LinearLru;
+      _inout_tmp_0 := self.Remove(inout self, x);
+      self := _inout_tmp_0;
+      LruModel.QueueCount(self.Queue());
+      var p: uint64, _inout_tmp_1: DList<uint64> := self.dlist.InsertBefore(inout self.dlist, 0, x);
+      self := self.(dlist := _inout_tmp_1);
+      var _inout_tmp_2: LinearHashMap<uint64>;
+      _inout_tmp_2 := LinearMutableMap.Insert(inout self.ptr_map, x, p);
+      self := self.(ptr_map := _inout_tmp_2);
+    }
+    method Next() returns (x: uint64)
+      requires this.Inv()
+      requires |LruModel.I(this.Queue())| > 0
+      ensures x == LruModel.Next(this.Queue())
+      decreases this
+    {
+      LruModel.QueueCount(this.dlist.Seq());
+      var p: uint64 := this.dlist.Next(0);
+      x := this.dlist.Get(p);
+    }
+    method NextOpt() returns (x: Option<uint64>)
+      requires this.Inv()
+      ensures x == LruModel.NextOpt(this.Queue())
+      decreases this
+    {
+      LruModel.QueueCount(this.dlist.Seq());
+      var p: uint64 := this.dlist.Next(0);
+      if p == 0 {
+        x := None;
+      } else {
+        LruModel.reveal_NextOpt();
+        x := Some(this.dlist.Get(p));
+      }
+    }
+  }
+}
+Dafny program verifier did not attempt verification

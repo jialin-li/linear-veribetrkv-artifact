@@ -1,0 +1,6 @@
+// BucketsLib.i.dfy
+module BucketsLib {
+  type BucketMap = map<Key, Message>
+  datatype Bucket = BucketMapWithSeq(b: BucketMap, keys: seq<Key>, msgs: seq<Message>)
+  type BucketList = seq<Bucket>
+}

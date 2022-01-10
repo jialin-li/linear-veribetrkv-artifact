@@ -1,0 +1,328 @@
+  var Length: int  // immutable
+  static method Constructor() returns (self: Committer)
+  {
+    var j: Journalist := JournalistImpl.Journalist.Constructor();
+    var m: LinearHashMap<JC.SyncReqStatus> := LinearMutableMap.Constructor(128);
+    self := Committer(StatusLoadingSuperblock, j, None, false, 0, None, {}, Superblock(0, 0, 0, Location(0, 0)), None, 0, JC.CommitStatus.CommitNone, None, None, None, None, JC.SuperblockUnfinished, JC.SuperblockUnfinished, m);
+  }
+  method journalAppend(key: Key, value: Value)
+  {
+    var je: JournalEntry := JournalInsert(key, value);
+    self.journalist.append(je);
+  }
+  method journalReplayOne(ghost je: JournalEntry)
+  {
+    self.journalist.replayJournalPop();
+  }
+  method pageInSuperblockReq(io: DiskIOHandler, which: uint64)
+    modifies io
+  {
+    var loc: Location;
+    if which == 0 {
+      loc := Superblock1Location();
+      if self.superblock1Read.None? {
+        var id: D.ReqId := RequestRead(io, loc);
+        inout self.superblock1Read := Some(id);
+      } else {
+        print "PageInSuperblockReq: doing nothing\n";
+      }
+    } else {
+      loc := Superblock2Location();
+      if self.superblock2Read.None? {
+        var id: D.ReqId := RequestRead(io, loc);
+        inout self.superblock2Read := Some(id);
+      } else {
+        print "PageInSuperblockReq: doing nothing\n";
+      }
+    }
+  }
+  method finishLoadingSuperblockPhase()
+  {
+    var idx: uint64 := if JC.increments1(self.superblock1.value.counter, self.superblock2.value.counter) then 1 else 0;
+    var sup: Superblock := if idx == 1 then self.superblock2.value else self.superblock1.value;
+    inout self.whichSuperblock := idx;
+    inout self.superblock := sup;
+    inout self.status := StatusLoadingOther;
+    inout self.journalFrontRead := None;
+    inout self.journalBackRead := None;
+  }
+  method FinishLoadingOtherPhase()
+  {
+    var success: bool := self.journalist.parseJournals();
+    if success {
+      inout self.status := StatusReady;
+      inout self.frozenLoc := None;
+      inout self.isFrozen := false;
+      inout self.frozenJournalPosition := 0;
+      inout self.superblockWrite := None;
+      inout self.outstandingJournalWrites := {};
+      inout self.newSuperblock := None;
+      inout self.commitStatus := JC.CommitNone;
+      var len: uint64 := self.superblock.journalLen;
+      self.journalist.setWrittenJournalLen(len);
+    } else {
+      print "FinishLoadingOtherPhase: there is replay journal\n";
+    }
+  }
+  function method isReplayEmpty(): (b: bool)
+  {
+    journalist.isReplayEmpty()
+  }
+  method PageInJournalReqFront(io: DiskIOHandler)
+    modifies io
+  {
+    var len: uint64 := if self.superblock.journalStart + self.superblock.journalLen >= NumJournalBlocks() then NumJournalBlocks() - self.superblock.journalStart else self.superblock.journalLen;
+    var loc: Location := JournalRangeLocation(self.superblock.journalStart, len);
+    var id: D.ReqId := RequestRead(io, loc);
+    inout self.journalFrontRead := Some(id);
+    inout self.journalBackRead := if self.journalBackRead == Some(id) then None else self.journalBackRead;
+  }
+  method PageInJournalReqBack(io: DiskIOHandler)
+    modifies io
+  {
+    var len: uint64 := self.superblock.journalStart + self.superblock.journalLen - NumJournalBlocks();
+    var loc: Location := JournalRangeLocation(0, len);
+    var id: D.ReqId := RequestRead(io, loc);
+    inout self.journalBackRead := Some(id);
+    inout self.journalFrontRead := if self.journalFrontRead == Some(id) then None else self.journalFrontRead;
+  }
+  method pageInJournalResp(io: DiskIOHandler)
+  {
+    var id: D.ReqId, addr: uint64, bytes: seq<byte> := io.getReadResult();
+    var jr: Option<JournalRange> := JournalistParsingImpl.computeJournalRangeOfByteSeq(bytes);
+    if jr.Some? {
+      if self.journalFrontRead == Some(id) {
+        self.journalist.setFront(jr.value);
+        inout self.journalFrontRead := None;
+      } else if self.journalBackRead == Some(id) {
+        self.journalist.setBack(jr.value);
+        inout self.journalBackRead := None;
+      } else 
+    } else 
+  }
+  method tryFinishLoadingOtherPhase(io: DiskIOHandler)
+    modifies io
+  {
+    var hasFront: bool := self.journalist.hasFront();
+    var hasBack: bool := self.journalist.hasBack();
+    if self.superblock.journalLen > 0 && !self.journalFrontRead.Some? && !hasFront {
+      self.PageInJournalReqFront(io);
+    } else if self.superblock.journalStart + self.superblock.journalLen > NumJournalBlocks() && !self.journalBackRead.Some? && !hasBack {
+      self.PageInJournalReqBack(io);
+    } else if (self.superblock.journalLen > 0 ==> hasFront) && (self.superblock.journalStart + self.superblock.journalLen > NumJournalBlocks() ==> hasBack) {
+      self.FinishLoadingOtherPhase();
+    } else 
+  }
+  static function method start_pos_add(a: uint64, b: uint64): uint64
+  {
+    if a + b >= NumJournalBlocks() then
+      a + b - NumJournalBlocks()
+    else
+      a + b
+  }
+  method WriteOutJournal(io: DiskIOHandler)
+    modifies io
+  {
+    var writtenJournalLen: uint64 := self.journalist.getWrittenJournalLen();
+    var doingFrozen: bool := self.journalist.hasFrozenJournal();
+    var j: seq<byte>;
+    if doingFrozen {
+      j := self.journalist.packageFrozenJournal();
+    } else {
+      j := self.journalist.packageInMemoryJournal();
+    }
+    var start: uint64 := start_pos_add(self.superblock.journalStart, writtenJournalLen);
+    var len: uint64 := |j| as uint64 / 4096;
+    var contiguous: bool := start + len <= NumJournalBlocks();
+    if contiguous {
+      var id: D.ReqId := io.write(JournalPoint(start), j);
+      inout self.outstandingJournalWrites := self.outstandingJournalWrites + {id};
+    } else {
+      var cut: uint64 := (NumJournalBlocks() - start) * 4096;
+      var id1: D.ReqId, id2: uint64 := io.write2(JournalPoint(start), j[..cut], JournalPoint(0), j[cut..]);
+      inout self.outstandingJournalWrites := self.outstandingJournalWrites + {id1, id2};
+    }
+    if doingFrozen {
+      inout self.frozenJournalPosition := self.journalist.getWrittenJournalLen();
+    } else {
+      SyncReqs3to2(inout self.syncReqs);
+    }
+  }
+  method writeOutSuperblockAdvanceLog(io: DiskIOHandler)
+    modifies io
+  {
+    var writtenJournalLen: uint64 := self.journalist.getWrittenJournalLen();
+    var newSuperblock: Superblock := SectorType.Superblock(JC.IncrementSuperblockCounter(self.superblock.counter), self.superblock.journalStart, writtenJournalLen, self.superblock.indirectionTableLoc);
+    var loc: Location := if self.whichSuperblock == 0 then Superblock2Location() else Superblock1Location();
+    var id: D.ReqId := RequestWrite(io, loc, SSI.SectorSuperblock(newSuperblock));
+    inout self.newSuperblock := Some(newSuperblock);
+    inout self.superblockWrite := Some(id);
+    inout self.commitStatus := JC.CommitAdvanceLog;
+  }
+  method writeOutSuperblockAdvanceLocation(io: DiskIOHandler)
+    modifies io
+  {
+    var writtenJournalLen: uint64 := self.journalist.getWrittenJournalLen();
+    var newSuperblock: Superblock := SectorType.Superblock(JC.IncrementSuperblockCounter(self.superblock.counter), start_pos_add(self.superblock.journalStart, self.frozenJournalPosition), writtenJournalLen - self.frozenJournalPosition, self.frozenLoc.value);
+    var loc: Location := if self.whichSuperblock == 0 then Superblock2Location() else Superblock1Location();
+    var id: D.ReqId := RequestWrite(io, loc, SSI.SectorSuperblock(newSuperblock));
+    inout self.newSuperblock := Some(newSuperblock);
+    inout self.superblockWrite := Some(id);
+    inout self.commitStatus := JC.CommitAdvanceLocation;
+  }
+  method freeze()
+  {
+    var writtenJournalLen: uint64 := self.journalist.getWrittenJournalLen();
+    self.journalist.freeze();
+    inout self.frozenLoc := None;
+    inout self.frozenJournalPosition := writtenJournalLen;
+    inout self.isFrozen := true;
+    SyncReqs3to2(inout self.syncReqs);
+  }
+  method receiveFrozenLoc(loc: Location)
+  {
+    inout self.frozenLoc := Some(loc);
+  }
+  method freeId() returns (id: uint64)
+  {
+    var maxId: uint64 := LinearMutableMap.MaxKey(this.syncReqs);
+    if maxId == 18446744073709551615 {
+      id := 0;
+    } else {
+      id := maxId + 1;
+    }
+  }
+  method pushSync() returns (id: uint64)
+  {
+    id := self.freeId();
+    if id != 0 && self.syncReqs.count < 2305843009213693952 {
+      LinearMutableMap.Insert(inout self.syncReqs, id, JC.State3);
+    } else {
+      id := 0;
+    }
+  }
+  method popSync(id: uint64)
+  {
+    LinearMutableMap.Remove(inout self.syncReqs, id);
+  }
+  method tryAdvanceLog(io: DiskIOHandler) returns (wait: bool)
+    modifies io
+  {
+    wait := false;
+    var hasFrozen: bool := self.journalist.hasFrozenJournal();
+    var hasInMem: bool := self.journalist.hasInMemoryJournal();
+    if self.superblockWrite.None? {
+      if hasFrozen || hasInMem {
+        self.WriteOutJournal(io);
+      } else if self.outstandingJournalWrites == {} {
+        self.writeOutSuperblockAdvanceLog(io);
+      } else {
+        wait := true;
+      }
+    } else {
+      wait := true;
+    }
+  }
+  method tryAdvanceLocation(io: DiskIOHandler) returns (wait: bool)
+    modifies io
+  {
+    wait := false;
+    var hasFrozen: bool := self.journalist.hasFrozenJournal();
+    var hasInMem: bool := self.journalist.hasInMemoryJournal();
+    if self.superblockWrite.None? {
+      if hasFrozen || hasInMem {
+        self.WriteOutJournal(io);
+      } else if self.outstandingJournalWrites == {} {
+        self.writeOutSuperblockAdvanceLocation(io);
+      } else {
+        wait := true;
+      }
+    } else {
+      wait := true;
+    }
+  }
+  method writeBackSuperblockResp(ghost io: IO)
+  {
+    if self.status.StatusReady? && self.commitStatus.CommitAdvanceLocation? {
+      var writtenJournalLen: uint64 := self.journalist.getWrittenJournalLen();
+      inout self.superblockWrite := None;
+      inout self.superblock := self.newSuperblock.value;
+      inout self.newSuperblock := None;
+      inout self.whichSuperblock := if self.whichSuperblock == 0 then 1 else 0;
+      SyncReqs2to1(inout self.syncReqs);
+      var position: uint64 := self.frozenJournalPosition;
+      self.journalist.updateWrittenJournalLen(writtenJournalLen - position);
+      inout self.frozenJournalPosition := 0;
+      inout self.frozenLoc := None;
+      inout self.isFrozen := false;
+      inout self.commitStatus := JC.CommitNone;
+    } else if self.status.StatusReady? && self.commitStatus.CommitAdvanceLog? {
+      inout self.superblockWrite := None;
+      inout self.superblock := self.newSuperblock.value;
+      inout self.newSuperblock := None;
+      inout self.whichSuperblock := if self.whichSuperblock == 0 then 1 else 0;
+      SyncReqs2to1(inout self.syncReqs);
+      inout self.commitStatus := JC.CommitNone;
+    } else {
+      print "writeBackSuperblockResp: didn't do anything\n";
+    }
+  }
+  method writeBackJournalResp(io: DiskIOHandler)
+  {
+    var id: D.ReqId, addr: uint64, len: uint64 := io.getWriteResult();
+    inout self.outstandingJournalWrites := self.outstandingJournalWrites - {id};
+  }
+  method readSuperblockResp(io: DiskIOHandler, which: uint64)
+  {
+    var id: D.ReqId;
+    var sector: lOption<SSI.Sector>;
+    id, sector := IOImpl.ReadSector(io);
+    var res: SuperblockReadResult := if sector.lSome? && sector.value.SectorSuperblock? then JC.SuperblockSuccess(sector.value.superblock) else JC.SuperblockCorruption;
+    if which == 0 {
+      if Some(id) == self.superblock1Read {
+        inout self.superblock1 := res;
+        inout self.superblock1Read := None;
+      } else {
+        print "readSuperblockResp did nothing\n";
+      }
+    } else {
+      if Some(id) == self.superblock2Read {
+        inout self.superblock2 := res;
+        inout self.superblock2Read := None;
+      } else {
+        print "readSuperblockResp did nothing\n";
+      }
+    }
+    match sector {
+      case lSome(value) =>
+        value.Free();
+      case lNone() =>
+        {
+        }
+    }
+  }
+  method SyncReqs2to1(inout m: LinearMutableMap.LinearHashMap<JC.SyncReqStatus>)
+  {
+    var it: SimpleIterator := LinearMutableMap.SimpleIterStart(m);
+    var nextOut: IteratorOutput<JC.SyncReqStatus> := LinearMutableMap.SimpleIterOutput(m, it);
+    while !nextOut.Done?
+    {
+      var value: SyncReqStatus := if nextOut.value == JC.State2 then JC.State1 else nextOut.value;
+      LinearMutableMap.UpdateByIter(inout m, it, value);
+      it := LinearMutableMap.SimpleIterInc(m, it);
+      nextOut := LinearMutableMap.SimpleIterOutput(m, it);
+    }
+  }
+  method SyncReqs3to2(inout m: LinearMutableMap.LinearHashMap<JC.SyncReqStatus>)
+  {
+    var it: SimpleIterator := LinearMutableMap.SimpleIterStart(m);
+    var nextOut: IteratorOutput<JC.SyncReqStatus> := LinearMutableMap.SimpleIterOutput(m, it);
+    while !nextOut.Done?
+    {
+      var value: SyncReqStatus := if nextOut.value == JC.State3 then JC.State2 else nextOut.value;
+      LinearMutableMap.UpdateByIter(inout m, it, value);
+      it := LinearMutableMap.SimpleIterInc(m, it);
+      nextOut := LinearMutableMap.SimpleIterOutput(m, it);
+    }
+  }
+Dafny program verifier did not attempt verification

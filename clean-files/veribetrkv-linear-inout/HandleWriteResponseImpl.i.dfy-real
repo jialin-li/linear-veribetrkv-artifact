@@ -1,0 +1,22 @@
+  var Length: int  // immutable
+  method writeResponse(inout s: Full, io: DiskIOHandler)
+  {
+    var id: D.ReqId, addr: uint64, len: uint64 := io.getWriteResult();
+    var loc: Location := DiskLayout.Location(addr, len);
+    if ValidNodeLocation(loc) && s.bc.Ready? && id in s.bc.outstandingBlockWrites {
+      IOImpl.writeNodeResponse(inout s.bc, io);
+    } else if ValidIndirectionTableLocation(loc) && s.bc.Ready? && s.bc.outstandingIndirectionTableWrite == Some(id) {
+      var frozen_loc: Location := IOImpl.writeIndirectionTableResponse(inout s.bc, io);
+      s.jc.receiveFrozenLoc(frozen_loc);
+    } else if s.jc.status.StatusReady? && ValidJournalLocation(loc) {
+      s.jc.writeBackJournalResp(io);
+    } else if ValidSuperblockLocation(loc) && Some(id) == s.jc.superblockWrite {
+      if s.jc.status.StatusReady? && s.jc.commitStatus.CommitAdvanceLocation? {
+        IOImpl.cleanUp(inout s.bc);
+      }
+      s.jc.writeBackSuperblockResp(IIO(io));
+    } else {
+      print "writeResponse: doing nothing\n";
+    }
+  }
+Dafny program verifier did not attempt verification

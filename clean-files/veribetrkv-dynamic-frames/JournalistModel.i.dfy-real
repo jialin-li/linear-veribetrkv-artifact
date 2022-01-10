@@ -1,0 +1,16 @@
+// JournalistModel.i.dfy
+module JournalistModel {
+  datatype JournalInfo = JournalInfo(inMemoryJournalFrozen: seq<JournalEntry>, inMemoryJournal: seq<JournalEntry>, replayJournal: seq<JournalEntry>, journalFront: Option<JournalRange>, journalBack: Option<JournalRange>, ghost writtenJournalLen: int)
+  datatype JournalistModel = JournalistModel(journalEntries: seq<JournalEntry>, start: uint64, len1: uint64, len2: uint64, replayJournal: seq<JournalEntry>, replayIdx: uint64, journalFront: Option<seq<JournalBlock>>, journalBack: Option<seq<JournalBlock>>, writtenJournalBlocks: uint64, frozenJournalBlocks: uint64, inMemoryWeight: uint64)
+  function method MaxPossibleEntries(): uint64
+  {
+    32 * 1048576
+  }
+  function method basic_mod(x: uint64, len: uint64): uint64
+  {
+    if x >= len then
+      x - len
+    else
+      x
+  }
+}

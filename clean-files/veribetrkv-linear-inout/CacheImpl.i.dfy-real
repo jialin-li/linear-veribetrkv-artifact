@@ -1,0 +1,182 @@
+  var Length: int  // immutable
+  static method DebugAccumulate(c: LMutCache) returns (acc: DebugAccumulator.DebugAccumulator)
+  {
+    acc := DebugAccumulator.EmptyAccumulator();
+    var a: DebugAccumulator.AccRec := new DebugAccumulator.AccRec(c.cache.count, "Node");
+    acc := DebugAccumulator.AccPut(acc, "cache", a);
+  }
+  static method NewCache() returns (newcache: LMutCache)
+  {
+    var cache: LinearHashMap<Node> := LCMM.Constructor(128);
+    newcache := LMutCache(cache);
+  }
+  method InCache(ref: BT.G.Reference) returns (b: bool)
+  {
+    b := IsEntry(cache.underlying, ref);
+  }
+  method Get(ref: BT.G.Reference) returns (node: Node)
+  {
+    node := LCMM.Get(cache, ref);
+  }
+  method Insert(ref: BT.G.Reference, node: Node)
+  {
+    var replaced: lOption<Node> := LCMM.Insert(inout self.cache, ref, node);
+    match replaced {
+      case lSome(oldnode) =>
+        {
+          var _ := FreeNode(oldnode);
+        }
+      case lNone() =>
+        {
+        }
+    }
+  }
+  method ReplaceAndGet(ref: BT.G.Reference, newNode: Node) returns (oldNode: Node)
+  {
+    var replaced: lOption<Node> := LCMM.Insert(inout self.cache, ref, newNode);
+    var lSome(node: Node) := replaced;
+    oldNode := node;
+  }
+  method RemoveAndGet(ref: BT.G.Reference) returns (node: Node)
+  {
+    var removed: lOption<Node> := LCMM.Remove(inout self.cache, ref);
+    var lSome(value: Node) := removed;
+    node := value;
+  }
+  method Remove(ref: BT.G.Reference)
+  {
+    var removed: lOption<Node> := LCMM.Remove(inout self.cache, ref);
+    match removed {
+      case lSome(node) =>
+        {
+          var _ := FreeNode(node);
+        }
+      case lNone() =>
+        {
+        }
+    }
+  }
+  method MoveAndReplace(oldref: BT.G.Reference, newref: BT.G.Reference, node: Node)
+  {
+    var replaced: lOption<Node> := LCMM.Insert(inout self.cache, oldref, node);
+    var lSome(oldnode: Node) := replaced;
+    var replaced2: lOption<Node> := LCMM.Insert(inout self.cache, newref, oldnode);
+    match replaced2 {
+      case lSome(n) =>
+        {
+          var _ := FreeNode(n);
+        }
+      case lNone() =>
+        {
+        }
+    }
+  }
+  method Overwrite(ref: BT.G.Reference, node: Node)
+  {
+    self.Insert(ref, node);
+  }
+  method NodeUpdateSlot(ref: BT.G.Reference, slot: uint64, bucket: MutBucket, childref: BT.G.Reference)
+      returns (newchildren: Option<seq<BT.G.Reference>>)
+  {
+    var node: Node := self.RemoveAndGet(ref);
+    node.UpdateSlot(slot, bucket, childref);
+    newchildren := node.children;
+    self.Insert(ref, node);
+  }
+  method InsertKeyValue(ref: BT.G.Reference, key: Key, msg: Message)
+  {
+    var node: Node := self.RemoveAndGet(ref);
+    node.InsertKeyValue(key, msg);
+    self.Insert(ref, node);
+  }
+  method SplitParent(ref: BT.G.Reference, slot: uint64, pivot: Key, left_childref: BT.G.Reference, right_childref: BT.G.Reference)
+  {
+    var node: Node := self.RemoveAndGet(ref);
+    node.SplitParent(slot, pivot, left_childref, right_childref);
+    self.Insert(ref, node);
+  }
+  method GetNodeInfo(ref: BT.G.Reference) returns (pivots: Pivots.PivotTable, children: Option<seq<BT.G.Reference>>)
+  {
+    var node: Node := Get(ref);
+    children := node.children;
+    pivots := node.pivotTable;
+  }
+  method GetNodeBucketsLen(ref: BT.G.Reference) returns (len: uint64)
+  {
+    var node: Node := Get(ref);
+    len := lseq_length_as_uint64(node.buckets);
+  }
+  method GetMessage(ref: BT.G.Reference, i: uint64, key: KeyType.Key)
+      returns (msg: Option<Message>)
+  {
+    var node: Node := Get(ref);
+    msg := lseq_peek(node.buckets, i).Query(key);
+  }
+  method NodeBucketsWeight(ref: BT.G.Reference) returns (weight: uint64)
+  {
+    var node: Node := Get(ref);
+    weight := MutBucket.computeWeightOfSeq(node.buckets);
+  }
+  method NodeBoundedBucket(ref: BT.G.Reference, pivotsref: BT.G.Reference, slot: uint64)
+      returns (b: bool)
+  {
+    var node: Node := Get(ref);
+    if ref == pivotsref {
+      b := node.BoundedBucket(node.pivotTable, slot);
+    } else {
+      var pivotsnode: Node := Get(pivotsref);
+      b := node.BoundedBucket(pivotsnode.pivotTable, slot);
+    }
+  }
+  method NodePartialFlush(parentref: BT.G.Reference, childref: BT.G.Reference, slot: uint64)
+      returns (newparentBucket: MutBucket, newchild: Node)
+  {
+    var parent: Node := Get(parentref);
+    var child: Node := Get(childref);
+    var newpbucket: MutBucket, newbuckets: lseq<MutBucket> := BucketImpl.PartialFlush(lseq_peek(parent.buckets, slot as uint64), child.buckets, child.pivotTable);
+    newchild := Node(child.pivotTable, child.children, newbuckets);
+    newparentBucket := newpbucket;
+  }
+  method NodeSplitMiddle(ref: BT.G.Reference)
+      returns (left: MutBucket, right: MutBucket, pivot: Key)
+  {
+    var node: Node := Get(ref);
+    var bucket: BucketImpl.MutBucket := lseq_peek(node.buckets, 0);
+    pivot := bucket.GetMiddleKey();
+    left, right := MutBucket.SplitLeftRight(bucket, pivot);
+  }
+  method NodeCutOff(ref: BT.G.Reference, lbound: KeyType.Key, ubound: Option<KeyType.Key>)
+      returns (node': Node)
+  {
+    var node: Node := Get(ref);
+    node' := node.CutoffNode(lbound, ubound);
+  }
+  method NodeBucketGen(ref: BT.G.Reference, r: uint64, start: BT.UI.RangeStart)
+      returns (g: BGI.Generator)
+  {
+    var node: Node := Get(ref);
+    g := BGI.Generator.GenFromBucketWithLowerBound(lseq_peek(node.buckets, r), start);
+  }
+  method NodeBiggestSlot(ref: BT.G.Reference) returns (res: (uint64, uint64))
+  {
+    var node: Node := Get(ref);
+    var buckets: lseq<BucketImpl.MutBucket> := node.buckets;
+    var j: uint64 := 1;
+    var bestIdx: uint64 := 0;
+    var bestWeight: uint64 := lseq_peek(buckets, 0).weight;
+    while j < lseq_length_as_uint64(buckets)
+    {
+      var w: uint64 := lseq_peek(buckets, j).weight;
+      if w > bestWeight {
+        bestIdx := j;
+        bestWeight := w;
+      }
+      j := j + 1;
+    }
+    return (bestIdx, bestWeight);
+  }
+  function method CacheCount(cache: LMutCache): (c: uint64)
+  {
+    cache.cache.count
+  }
+Dafny program verifier did not attempt verification

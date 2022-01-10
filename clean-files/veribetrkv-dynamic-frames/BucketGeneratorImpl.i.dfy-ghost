@@ -1,0 +1,221 @@
+// BucketGeneratorImpl.i.dfy
+module BucketGeneratorImpl {
+  class Generator {
+    var bucket: MutBucket?
+    var it: Iterator
+    var top: Generator?
+    var bot: Generator?
+    var next: BucketIteratorModel.IteratorOutput
+    ghost var Repr: set<object>
+    ghost var ReadOnlyRepr: set<object>
+    ghost var Height: nat
+    constructor ()
+    {
+    }
+    predicate {:opaque} {:fuel 0, 0} Inv()
+      reads this, this.Repr, this.ReadOnlyRepr
+      ensures Inv() ==> this in this.Repr
+      decreases Height, 1
+    {
+      Inv1()
+    }
+    predicate Inv1()
+      reads this, this.Repr, this.ReadOnlyRepr
+      decreases Height, 0
+    {
+      (bucket != null ==>
+        bucket in ReadOnlyRepr &&
+        Repr == {this} &&
+        ReadOnlyRepr == bucket.Repr &&
+        this !in bucket.Repr &&
+        bucket.Inv() &&
+        bucket.WFIter(it)) &&
+      (bucket == null ==>
+        top != null &&
+        bot != null &&
+        top in Repr &&
+        bot in Repr &&
+        Repr == {this} + top.Repr + bot.Repr &&
+        ReadOnlyRepr == top.ReadOnlyRepr + bot.ReadOnlyRepr &&
+        top.Repr !! bot.Repr &&
+        top.Repr !! bot.ReadOnlyRepr &&
+        bot.Repr !! top.ReadOnlyRepr &&
+        this !in top.Repr &&
+        this !in bot.Repr &&
+        this !in top.ReadOnlyRepr &&
+        this !in bot.ReadOnlyRepr &&
+        top.Height < this.Height &&
+        bot.Height < this.Height &&
+        top.Inv() &&
+        bot.Inv())
+    }
+    protected function I(): BucketGeneratorModel.Generator
+      requires Inv()
+      reads this, this.Repr, this.ReadOnlyRepr
+      ensures BucketGeneratorModel.WF(I())
+      decreases Height
+    {
+      reveal_Inv_for(this);
+      if bucket != null then
+        BucketGeneratorModel.BasicGenerator(bucket.I(), IIterator(it))
+      else
+        BucketGeneratorModel.ComposeGenerator(top.I(), bot.I(), next)
+    }
+    method GenLeft() returns (res: BucketIteratorModel.IteratorOutput)
+      requires Inv()
+      ensures res == BucketGeneratorModel.GenLeft(I())
+    {
+      reveal_Inv_for(this);
+      if bucket != null {
+        res := bucket.GetNext(it);
+      } else {
+        res := next;
+      }
+    }
+    method GenPop()
+      requires Inv()
+      requires BucketGeneratorModel.GenLeft(I()).Next?
+      modifies Repr
+      ensures Inv()
+      ensures I() == BucketGeneratorModel.GenPop(old(I()))
+      ensures forall o: object {:trigger o in old(Repr)} {:trigger o in Repr} | o in Repr :: o in old(Repr) || fresh(o)
+      ensures ReadOnlyRepr == old(ReadOnlyRepr)
+      decreases Height
+    {
+      reveal_Inv_for(this);
+      BucketGeneratorModel.reveal_BasicGenPop();
+      BucketGeneratorModel.reveal_MergeGenPop();
+      BucketGeneratorModel.reveal_GenPop();
+      if bucket != null {
+        it := bucket.IterInc(it);
+      } else {
+        var top_next: BucketIteratorModel.IteratorOutput := top.GenLeft();
+        var bot_next: BucketIteratorModel.IteratorOutput := bot.GenLeft();
+        var c: int32;
+        if top_next.Next? && bot_next.Next? {
+          c := cmp(top_next.key, bot_next.key);
+        }
+        if top_next.Next? && bot_next.Next? && c == 0 {
+          top.GenPop();
+          bot.GenPop();
+          next := BucketIteratorModel.Next(top_next.key, Merge(top_next.msg, bot_next.msg));
+        } else if top_next.Next? && (bot_next.Next? ==> c < 0) {
+          top.GenPop();
+          next := top_next;
+        } else if bot_next.Next? {
+          bot.GenPop();
+          next := bot_next;
+        } else {
+          next := BucketIteratorModel.Done;
+        }
+        Repr := {this} + top.Repr + bot.Repr;
+        ReadOnlyRepr := top.ReadOnlyRepr + bot.ReadOnlyRepr;
+        Height := top.Height + bot.Height + 1;
+      }
+      assert Inv1();
+      reveal_Inv_for(this);
+    }
+    static method GenCompose(top: Generator, bot: Generator) returns (g: Generator)
+      requires top.Inv()
+      requires bot.Inv()
+      requires top.Repr !! bot.Repr
+      requires top.Repr !! bot.ReadOnlyRepr
+      requires bot.Repr !! top.ReadOnlyRepr
+      modifies top.Repr, bot.Repr
+      ensures g.Inv()
+      ensures forall o: object {:trigger o in old(bot.Repr)} {:trigger o in old(top.Repr)} {:trigger o in g.Repr} | o in g.Repr :: fresh(o) || o in old(top.Repr) || o in old(bot.Repr)
+      ensures top.ReadOnlyRepr == old(top.ReadOnlyRepr)
+      ensures bot.ReadOnlyRepr == old(bot.ReadOnlyRepr)
+      ensures g.ReadOnlyRepr == top.ReadOnlyRepr + bot.ReadOnlyRepr
+      ensures g.I() == BucketGeneratorModel.GenCompose(old(top.I()), old(bot.I()))
+      decreases top, bot
+    {
+      g := new Generator();
+      g.bucket := null;
+      g.top := top;
+      g.bot := bot;
+      var top_next: BucketIteratorModel.IteratorOutput := top.GenLeft();
+      var bot_next: BucketIteratorModel.IteratorOutput := bot.GenLeft();
+      var c: int32;
+      if top_next.Next? && bot_next.Next? {
+        c := cmp(top_next.key, bot_next.key);
+      }
+      if top_next.Next? && bot_next.Next? && c == 0 {
+        top.GenPop();
+        bot.GenPop();
+        g.next := BucketIteratorModel.Next(top_next.key, Merge(top_next.msg, bot_next.msg));
+      } else if top_next.Next? && (bot_next.Next? ==> c < 0) {
+        top.GenPop();
+        g.next := top_next;
+      } else if bot_next.Next? {
+        bot.GenPop();
+        g.next := bot_next;
+      } else {
+        g.next := BucketIteratorModel.Done;
+      }
+      g.Repr := {g} + g.top.Repr + g.bot.Repr;
+      g.ReadOnlyRepr := g.top.ReadOnlyRepr + g.bot.ReadOnlyRepr;
+      g.Height := g.top.Height + g.bot.Height + 1;
+      assert g.Inv1();
+      reveal_Inv_for(g);
+      BucketGeneratorModel.reveal_GenCompose();
+    }
+    static method GenFromBucketWithLowerBound(bucket: MutBucket, start: UI.RangeStart) returns (g: Generator)
+      requires bucket.Inv()
+      ensures g.Inv()
+      ensures fresh(g.Repr)
+      ensures g.ReadOnlyRepr == bucket.Repr
+      ensures g.I() == BucketGeneratorModel.GenFromBucketWithLowerBound(bucket.I(), start)
+      decreases bucket, start
+    {
+      g := new Generator();
+      g.bucket := bucket;
+      match start {
+        case SExclusive(key) =>
+          {
+            g.it := bucket.IterFindFirstGt(key);
+          }
+        case SInclusive(key) =>
+          {
+            g.it := bucket.IterFindFirstGte(key);
+          }
+        case NegativeInf =>
+          {
+            g.it := bucket.IterStart();
+          }
+      }
+      g.Repr := {g};
+      g.ReadOnlyRepr := bucket.Repr;
+      assert g.Inv1();
+      reveal_Inv_for(g);
+      BucketGeneratorModel.reveal_GenFromBucketWithLowerBound();
+    }
+    static method GenFromBucketStackWithLowerBound(buckets: seq<MutBucket>, start: UI.RangeStart) returns (g: Generator)
+      requires forall i: int {:trigger buckets[i]} | 0 <= i < |buckets| :: buckets[i].Inv()
+      requires |buckets| >= 1
+      requires |buckets| < 18446744073709551616
+      ensures g.Inv()
+      ensures fresh(g.Repr)
+      ensures g.ReadOnlyRepr == MutBucket.ReprSeq(buckets)
+      ensures g.I() == BucketGeneratorModel.GenFromBucketStackWithLowerBound(MutBucket.ISeq(buckets), start)
+      decreases |buckets|
+    {
+      MutBucket.AllocatedReprSeq(buckets);
+      if |buckets| as uint64 == 1 {
+        g := GenFromBucketWithLowerBound(buckets[0 as uint64], start);
+        MutBucket.ReprSeq1Eq(buckets);
+      } else {
+        var mid: uint64 := |buckets| as uint64 / 2;
+        MutBucket.AllocatedReprSeq(buckets[..mid]);
+        MutBucket.AllocatedReprSeq(buckets[mid..]);
+        var g1: Generator := GenFromBucketStackWithLowerBound(buckets[..mid], start);
+        var g2: Generator := GenFromBucketStackWithLowerBound(buckets[mid..], start);
+        g := GenCompose(g1, g2);
+        assert buckets[..mid] + buckets[mid..] == buckets;
+        MutBucket.ReprSeqAdditive(buckets[..mid], buckets[mid..]);
+        MutBucket.ISeqAdditive(buckets[..mid], buckets[mid..]);
+      }
+      BucketGeneratorModel.reveal_GenFromBucketStackWithLowerBound();
+    }
+  }
+}

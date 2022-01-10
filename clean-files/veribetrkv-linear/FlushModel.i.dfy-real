@@ -1,0 +1,4 @@
+// FlushModel.i.dfy
+module FlushModel {
+}
+Dafny program verifier did not attempt verification

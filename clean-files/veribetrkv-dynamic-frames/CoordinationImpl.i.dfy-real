@@ -1,0 +1,148 @@
+// CoordinationImpl.i.dfy
+module CoordinationImpl {
+  method pushSync(k: ImplConstants, s: Full) returns (id: uint64)
+    modifies s.Repr
+  {
+    id := CommitterCommitImpl.pushSync(k, s.jc);
+  }
+  method receiveLoc(k: ImplConstants, s: Variables, loc: DiskLayout.Location)
+    modifies s.Repr()
+  {
+    s.loading := true;
+    s.ready := false;
+    s.indirectionTableLoc := loc;
+    s.indirectionTableRead := None;
+  }
+  method initialization(k: ImplConstants, s: Full, io: DiskIOHandler)
+    modifies s.Repr, io
+  {
+    if s.jc.status.StatusLoadingSuperblock? {
+      if s.jc.superblock1.SuperblockSuccess? && s.jc.superblock2.SuperblockSuccess? {
+        CommitterInitImpl.FinishLoadingSuperblockPhase(k, s.jc);
+        receiveLoc(k, s.bc, s.jc.superblock.indirectionTableLoc);
+      } else if s.jc.superblock1Read.None? && s.jc.superblock1.SuperblockUnfinished? {
+        CommitterInitImpl.PageInSuperblockReq(k, s.jc, io, 0);
+      } else if s.jc.superblock2Read.None? && s.jc.superblock2.SuperblockUnfinished? {
+        CommitterInitImpl.PageInSuperblockReq(k, s.jc, io, 1);
+      } else {
+        print "initialization: doing nothing, superblock reads out\n";
+      }
+    } else if s.jc.status.StatusLoadingOther? {
+      CommitterInitImpl.tryFinishLoadingOtherPhase(k, s.jc, io);
+    } else if s.bc.loading && !s.bc.ready && s.bc.indirectionTableRead.None? {
+      IOImpl.PageInIndirectionTableReq(k, s.bc, io);
+    } else if s.bc.ready {
+      var isEmpty: bool := CommitterInitImpl.isReplayEmpty(s.jc);
+      if !isEmpty {
+        var je: JournalEntry := s.jc.journalist.replayJournalTop();
+        var success: bool := InsertImpl.insert(k, s.bc, io, je.key, je.value);
+        if success {
+          CommitterReplayImpl.JournalReplayOne(k, s.jc);
+        }
+      } else {
+        print "initialization: doing nothing, no replay journal\n";
+      }
+    } else {
+      print "initialization: doing nothing\n";
+    }
+  }
+  method doSync(k: ImplConstants, s: Full, io: DiskIOHandler, graphSync: bool)
+      returns (wait: bool)
+    modifies s.Repr, io
+  {
+    wait := false;
+    if s.jc.isFrozen {
+      if s.jc.frozenLoc.Some? {
+        wait := CommitterCommitImpl.tryAdvanceLocation(k, s.jc, io);
+      } else {
+        var froze: bool, wait0: bool := SyncImpl.sync(k, s.bc, io);
+        wait := wait0;
+      }
+    } else if s.jc.superblockWrite.Some? {
+      wait := true;
+    } else {
+      if graphSync {
+        var froze: bool, wait0: bool := SyncImpl.sync(k, s.bc, io);
+        wait := wait0;
+        if froze {
+          CommitterCommitImpl.freeze(k, s.jc);
+        }
+      } else {
+        wait := CommitterCommitImpl.tryAdvanceLog(k, s.jc, io);
+      }
+    }
+  }
+  method popSync(k: ImplConstants, s: Full, io: DiskIOHandler, id: uint64, graphSync: bool)
+      returns (success: bool, wait: bool)
+    modifies s.Repr, io
+  {
+    wait := false;
+    var syncState: Option<JC.SyncReqStatus> := s.jc.syncReqs.Get(id);
+    if syncState == Some(JC.State1) {
+      CommitterCommitImpl.popSync(k, s.jc, id);
+      success := true;
+    } else {
+      var isInit: bool := isInitialized(s);
+      if !isInit {
+        initialization(k, s, io);
+        success := false;
+      } else {
+        wait := doSync(k, s, io, graphSync);
+        success := false;
+      }
+    }
+  }
+  method isInitialized(s: Full) returns (b: bool)
+  {
+    if s.bc.ready && s.jc.status.StatusReady? {
+      b := CommitterInitImpl.isReplayEmpty(s.jc);
+    } else {
+      b := false;
+    }
+  }
+  method query(k: ImplConstants, s: Full, io: DiskIOHandler, key: Key)
+      returns (result: Option<Value>)
+    modifies s.Repr, io
+  {
+    var is_init: bool := isInitialized(s);
+    if !is_init {
+      initialization(k, s, io);
+      result := None;
+    } else {
+      result := QueryImpl.query(k, s.bc, io, key);
+    }
+  }
+  method succ(k: ImplConstants, s: Full, io: DiskIOHandler, start: UI.RangeStart, maxToFind: uint64)
+      returns (result: Option<UI.SuccResultList>)
+    modifies s.Repr, io
+  {
+    var is_init: bool := isInitialized(s);
+    if !is_init {
+      initialization(k, s, io);
+      result := None;
+    } else {
+      result := SuccImpl.doSucc(k, s.bc, io, start, maxToFind);
+    }
+  }
+  method insert(k: ImplConstants, s: Full, io: DiskIOHandler, key: Key, value: Value)
+      returns (success: bool)
+    modifies s.Repr, io
+  {
+    var is_init: bool := isInitialized(s);
+    if !is_init {
+      initialization(k, s, io);
+      success := false;
+    } else {
+      var can_append: bool := s.jc.journalist.canAppend(Journal.JournalInsert(key, value));
+      if can_append {
+        success := InsertImpl.insert(k, s.bc, io, key, value);
+        if success {
+          CommitterAppendImpl.JournalAppend(k, s.jc, key, value);
+        }
+      } else {
+        var wait: bool := doSync(k, s, io, true);
+        success := false;
+      }
+    }
+  }
+}

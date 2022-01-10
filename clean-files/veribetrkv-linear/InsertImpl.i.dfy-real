@@ -1,0 +1,72 @@
+// InsertImpl.i.dfy
+module InsertImpl {
+  method insertKeyValue(inout old_s: ImplVariables, key: Key, value: Value)
+      returns (success: bool, s: ImplVariables)
+  {
+    s := old_s;
+    success := true;
+    if s.frozenIndirectionTable.lSome? {
+      var b: bool := s.frozenIndirectionTable.value.HasEmptyLoc(BT.G.Root());
+      if b {
+        success := false;
+        print "giving up; can't dirty root because frozen isn't written";
+      }
+    }
+    if success {
+      var msg: Message := ValueMessage.Define(value);
+      var _inout_tmp_0: LMutCache;
+      _inout_tmp_0 := s.cache.InsertKeyValue(inout s.cache, BT.G.Root(), key, msg);
+      s := s.(cache := _inout_tmp_0);
+      var _inout_tmp_1: ImplVariables;
+      _inout_tmp_1 := writeBookkeepingNoSuccsUpdate(inout s, BT.G.Root());
+      s := _inout_tmp_1;
+    }
+  }
+  method insert(inout old_s: ImplVariables, io: DiskIOHandler, key: Key, value: Value, ghost replay: bool)
+      returns (success: bool, s: ImplVariables)
+    modifies io
+  {
+    s := old_s;
+    success := true;
+    var indirectionTableSize: uint64 := s.ephemeralIndirectionTable.GetSize();
+    if !(indirectionTableSize <= IT.MaxSizeUint64() - 3) {
+      success := false;
+    }
+    if success {
+      var rootLookup: bool := s.cache.InCache(BT.G.Root());
+      if !rootLookup {
+        if s.TotalCacheSize() <= MaxCacheSizeUint64() - 1 {
+          var _inout_tmp_0: ImplVariables;
+          _inout_tmp_0 := PageInNodeReq(inout s, io, BT.G.Root());
+          s := _inout_tmp_0;
+          success := false;
+        } else {
+          print "insert: root not in cache, but cache is full\n";
+          success := false;
+        }
+      }
+    }
+    if success {
+      var pivots: Pivots.PivotTable, _: Option<seq<BT.G.Reference>> := s.cache.GetNodeInfo(BT.G.Root());
+      var bounded: bool := ComputeBoundedKey(pivots, key);
+      if !bounded {
+        success := false;
+        print "giving up; can't insert key at root because root is incorrects";
+      }
+    }
+    if success {
+      var weightSeq: uint64 := s.cache.NodeBucketsWeight(BT.G.Root());
+      if WeightKeyUint64(key) + WeightMessageUint64(ValueMessage.Define(value)) + weightSeq <= MaxTotalBucketWeightUint64() {
+        var _inout_tmp_1: ImplVariables;
+        success, _inout_tmp_1 := insertKeyValue(inout s, key, value);
+        s := _inout_tmp_1;
+      } else {
+        var _inout_tmp_2: ImplVariables;
+        _inout_tmp_2 := runFlushPolicy(inout s, io);
+        s := _inout_tmp_2;
+        success := false;
+      }
+    }
+  }
+}
+Dafny program verifier did not attempt verification

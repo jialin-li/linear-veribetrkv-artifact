@@ -1,0 +1,4 @@
+// DiskOpImpl.i.dfy
+module DiskOpImpl {
+  type ImplConstants = ByteCache.Constants
+}

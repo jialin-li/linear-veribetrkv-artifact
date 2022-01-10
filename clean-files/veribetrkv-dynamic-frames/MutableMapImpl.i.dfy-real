@@ -1,0 +1,253 @@
+// MutableMapImpl.i.dfy
+module MutableMap {
+  class FixedSizeHashMap<V> {
+    var Storage: array<Item<V>>
+    var Count: uint64
+    ghost var Contents: map<uint64, Option<V>>
+    ghost var Repr: set<object>
+    constructor (size: uint64)
+    {
+      Count := 0;
+      new;
+      Storage := NativeArrays.newArrayFill(size, Empty);
+    }
+    constructor FromStorage(storage: array<Item<V>>, count: uint64)
+    {
+      Count := count;
+      Storage := storage;
+    }
+    method Uint64SlotForKey(key: uint64) returns (result: uint64)
+    {
+      var h: uint64 := MutableMapModel.hash64(key);
+      result := h % Storage.Length as uint64;
+    }
+    method Uint64SlotSuccessor(slot: uint64) returns (nextSlot: uint64)
+    {
+      if slot == this.Storage.Length as uint64 - 1 {
+        return 0;
+      } else {
+        return slot + 1;
+      }
+    }
+    method Probe(key: uint64) returns (slotIdx: uint64)
+    {
+      slotIdx := Uint64SlotForKey(key);
+      while true
+      {
+        if Storage[slotIdx].Empty? || (Storage[slotIdx].Tombstone? && Storage[slotIdx].key == key) {
+          return;
+        } else if Storage[slotIdx].key == key {
+          return;
+        }
+        slotIdx := Uint64SlotSuccessor(slotIdx);
+      }
+    }
+    method Insert(key: uint64, value: V) returns (replaced: Option<V>)
+      modifies Repr
+    {
+      var slotIdx: uint64 := Probe(key);
+      if Storage[slotIdx].Empty? {
+        this.Count := this.Count + 1;
+        replaced := None;
+      } else if Storage[slotIdx].Tombstone? {
+        replaced := None;
+      } else {
+        replaced := Some(Storage[slotIdx].value);
+      }
+      this.Storage[slotIdx] := Entry(key, value);
+    }
+    method Get(key: uint64) returns (found: Option<V>)
+    {
+      var slotIdx: uint64 := Probe(key);
+      if Storage[slotIdx].Entry? {
+        found := Some(Storage[slotIdx].value);
+      } else {
+        found := None;
+      }
+    }
+    method Remove(key: uint64) returns (removed: Option<V>)
+      modifies Repr
+    {
+      var slotIdx: uint64 := Probe(key);
+      if Storage[slotIdx].Entry? {
+        removed := Some(Storage[slotIdx].value);
+        Storage[slotIdx] := Tombstone(key);
+      } else {
+        removed := None;
+      }
+    }
+    method Clone() returns (cloned: FixedSizeHashMap<V>)
+    {
+      var size: uint64 := Storage.Length as uint64;
+      var newStorage: array<Item<V>> := NativeArrays.newArrayClone(this.Storage);
+      cloned := new FixedSizeHashMap.FromStorage(newStorage, Count);
+    }
+    method UpdateBySlot(slotIdx: uint64, v: V)
+      modifies Repr
+    {
+      Storage[slotIdx] := Entry(Storage[slotIdx].key, v);
+    }
+  }
+  class ResizingHashMap<V> {
+    var Underlying: FixedSizeHashMap<V>
+    var Count: uint64
+    ghost var Contents: map<uint64, V>
+    ghost var Repr: set<object>
+    constructor (size: uint64)
+    {
+      Count := 0;
+      Underlying := new FixedSizeHashMap<V>(size);
+      new;
+    }
+    constructor FromUnderlying(underlying: FixedSizeHashMap<V>, count: uint64)
+    {
+      Count := count;
+      Underlying := underlying;
+      new;
+    }
+    method Realloc()
+      modifies this
+    {
+      var newSize: uint64 := (128 + Count) * 4;
+      var newUnderlying: FixedSizeHashMap<V> := new FixedSizeHashMap<V>(newSize);
+      var i: uint64 := 0;
+      while i < Underlying.Storage.Length as uint64
+      {
+        var item: Item<V> := Underlying.Storage[i];
+        if item.Entry? {
+          var _: Option<V> := newUnderlying.Insert(item.key, item.value);
+        }
+        i := i + 1;
+      }
+      this.Underlying := newUnderlying;
+    }
+    method InsertAndGetOld(key: uint64, value: V) returns (replaced: Option<V>)
+      modifies Repr
+    {
+      if Underlying.Storage.Length as uint64 / 2 <= Underlying.Count {
+        Realloc();
+      }
+      replaced := Underlying.Insert(key, value);
+      if replaced.None? {
+        Count := Count + 1;
+      }
+    }
+    method Insert(key: uint64, value: V)
+      modifies Repr
+    {
+      var _: Option<V> := InsertAndGetOld(key, value);
+    }
+    method RemoveAndGet(key: uint64) returns (removed: Option<V>)
+      modifies Repr
+    {
+      removed := Underlying.Remove(key);
+      if removed.Some? {
+        Count := Count - 1;
+      }
+    }
+    method Remove(key: uint64)
+      modifies Repr
+    {
+      var _: Option<V> := RemoveAndGet(key);
+    }
+    method Get(key: uint64) returns (found: Option<V>)
+    {
+      found := Underlying.Get(key);
+    }
+    method Clone() returns (cloned: ResizingHashMap<V>)
+    {
+      var clonedUnderlying: FixedSizeHashMap<V> := Underlying.Clone();
+      cloned := new ResizingHashMap.FromUnderlying(clonedUnderlying, Count);
+    }
+    method IterStart() returns (it': Iterator<V>)
+    {
+      var i: uint64 := 0;
+      while i < Underlying.Storage.Length as uint64
+      {
+        if Underlying.Storage[i].Entry? {
+          var next: IteratorOutput<V> := Next(Underlying.Storage[i].key, Underlying.Storage[i].value);
+          it' := Iterator(i, {}, (|self.underlying.storage| - i as int) as ORDINAL, next);
+          return;
+        }
+        i := i + 1;
+      }
+      var next: IteratorOutput<V> := Done;
+      it' := Iterator(i, {}, (|self.underlying.storage| - i as int) as ORDINAL, next);
+    }
+    method IterInc(it: Iterator<V>) returns (it': Iterator<V>)
+    {
+      var i: uint64 := it.i + 1;
+      while i < Underlying.Storage.Length as uint64
+      {
+        if Underlying.Storage[i].Entry? {
+          var next: IteratorOutput<V> := Next(Underlying.Storage[i].key, Underlying.Storage[i].value);
+          it' := Iterator(i, it.s + {it.next.key}, (|self.underlying.storage| - i as int) as ORDINAL, next);
+          return;
+        }
+        i := i + 1;
+      }
+      var next: IteratorOutput<V> := Done;
+      it' := Iterator(i, it.s + {it.next.key}, (|self.underlying.storage| - i as int) as ORDINAL, next);
+    }
+    method MaxKey() returns (res: uint64)
+    {
+      var it: Iterator<V> := IterStart();
+      var m: uint64 := 0;
+      while it.next.Next?
+      {
+        var key: uint64 := it.next.key;
+        if key > m {
+          m := key;
+        }
+        it := IterInc(it);
+      }
+      return m;
+    }
+    method SimpleIterOutput(it: SimpleIterator) returns (next: IteratorOutput<V>)
+    {
+      if it.i == this.Underlying.Storage.Length as uint64 {
+        return Done;
+      } else {
+        return Next(this.Underlying.Storage[it.i].key, this.Underlying.Storage[it.i].value);
+      }
+    }
+    method wtf()
+    method SimpleIterStart() returns (it': SimpleIterator)
+    {
+      var i: uint64 := 0;
+      while i < Underlying.Storage.Length as uint64
+      {
+        if Underlying.Storage[i].Entry? {
+          it' := SimpleIterator(i, {}, (|self.underlying.storage| - i as int) as ORDINAL);
+          return;
+        }
+        i := i + 1;
+      }
+      it' := SimpleIterator(i, {}, (|self.underlying.storage| - i as int) as ORDINAL);
+    }
+    method SimpleIterInc(it: SimpleIterator) returns (it': SimpleIterator)
+    {
+      var i: uint64 := it.i + 1;
+      while i < Underlying.Storage.Length as uint64
+      {
+        if Underlying.Storage[i].Entry? {
+          it' := SimpleIterator(i, it.s + {MutableMapModel.SimpleIterOutput(old(I()), it).key}, (|self.underlying.storage| - i as int) as ORDINAL);
+          return;
+        }
+        i := i + 1;
+      }
+      it' := SimpleIterator(i, it.s + {MutableMapModel.SimpleIterOutput(old(I()), it).key}, (|self.underlying.storage| - i as int) as ORDINAL);
+    }
+    method UpdateByIter(it: SimpleIterator, value: V)
+      modifies Repr
+    {
+      this.Underlying.UpdateBySlot(it.i, value);
+    }
+    method FindSimpleIter(key: uint64) returns (it: SimpleIterator)
+    {
+      var idx: uint64 := this.Underlying.Probe(key);
+      var i: uint64 := if this.Underlying.Storage[idx].Entry? then idx else this.Underlying.Storage.Length as uint64;
+      return SimpleIterator(i, s, (|I().underlying.storage| - i as int) as ORDINAL);
+    }
+  }
+}

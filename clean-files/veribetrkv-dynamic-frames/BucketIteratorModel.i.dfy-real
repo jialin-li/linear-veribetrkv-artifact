@@ -1,0 +1,5 @@
+// BucketIteratorModel.i.dfy
+module BucketIteratorModel {
+  datatype IteratorOutput = Next(key: Key, msg: Message) | Done
+  datatype Iterator = Iterator(ghost next: IteratorOutput, ghost idx: int, ghost decreaser: int)
+}

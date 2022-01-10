@@ -1,0 +1,67 @@
+// LKMBPKVOps.i.dfy
+module LKMBPKVOps {
+  method LeafFillDpkv(node: LKMB.Model.Node, dpkv: DPKV.DynamicPkv)
+    modifies dpkv.Repr
+  {
+    var keys: seq<Key> := node.keys;
+    var values: seq<Value> := node.values;
+    var nkeys: uint64 := seq_length(keys);
+    var messages: seq<seq<byte>> := ValueMessage.MessageSeq_to_bytestringSeq(values, nkeys);
+    var keys_nkeys: seq<seq<NativeTypes.byte>> := AllocAndCopy(keys, 0, nkeys);
+    dpkv.keys.AppendSeq(keys_nkeys);
+    dpkv.messages.AppendSeq(messages);
+    var _: () := seq_free(keys_nkeys);
+    var _: () := seq_free(messages);
+  }
+  method IndexFillDpkv(node: LKMB.Model.Node, dpkv: DPKV.DynamicPkv)
+    modifies dpkv.Repr
+  {
+    var nchildren: uint64 := lseq_length_uint64(node.children);
+    var i: uint64 := 0;
+    while i < nchildren
+    {
+      FillDpkv(lseq_peek(node.children, i), dpkv);
+      i := i + 1;
+    }
+  }
+  method FillDpkv(node: LKMB.Model.Node, dpkv: DPKV.DynamicPkv)
+    modifies dpkv.Repr
+  {
+    if node.Leaf? {
+      LeafFillDpkv(node, dpkv);
+    } else {
+      IndexFillDpkv(node, dpkv);
+    }
+  }
+  method ToPkv(node: LKMB.Model.Node) returns (pkv: DPKV.PKV.Pkv)
+  {
+    var nelts: uint64 := LKMB.CountElements(node);
+    var keydatasize: uint32 := if nelts * KeyType.MaxLen() <= 4294967295 then (nelts * KeyType.MaxLen()) as uint32 else 4294967295;
+    var msgdatasize: uint32 := if nelts * ValueType.MaxLen() <= 4294967295 then (nelts * ValueType.MaxLen()) as uint32 else 4294967295;
+    var cap: Capacity := DPKV.Capacity(nelts as uint32, keydatasize, msgdatasize);
+    var dpkv: DynamicPkv := new DPKV.DynamicPkv.PreSized(cap);
+    FillDpkv(node, dpkv);
+    pkv := dpkv.toPkv();
+  }
+  method FromPkv(pkv: DPKV.PKV.Pkv) returns (node: LKMB.Node, weight: uint64)
+  {
+    var i: uint64 := 0;
+    var oldvalue: Option<Value>;
+    node := LKMB.EmptyTree();
+    weight := 0;
+    while i < DPKV.PKV.NumKVPairs(pkv)
+    {
+      var key: Key := DPKV.PKV.GetKey(pkv, i);
+      var msg: Message := DPKV.PKV.GetMessage(pkv, i);
+      node, oldvalue := LKMB.Insert(node, key, msg);
+      weight := weight + BucketWeights.WeightMessageUint64(msg);
+      if oldvalue.Some? {
+        weight := weight - BucketWeights.WeightMessageUint64(oldvalue.value);
+      } else {
+        weight := weight + BucketWeights.WeightKeyUint64(key);
+      }
+      i := i + 1;
+    }
+  }
+}
+Dafny program verifier did not attempt verification

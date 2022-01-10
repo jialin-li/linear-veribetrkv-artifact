@@ -1,0 +1,79 @@
+// EvictImpl.i.dfy
+module EvictImpl {
+  method NeedToWrite(s: ImplVariables, ref: BT.G.Reference) returns (b: bool)
+  {
+    var eph: Option<Entry> := s.ephemeralIndirectionTable.GetEntry(ref);
+    if eph.Some? && eph.value.loc.None? {
+      return true;
+    }
+    if s.frozenIndirectionTable.lSome? {
+      var fro: Option<Entry> := s.frozenIndirectionTable.value.GetEntry(ref);
+      if fro.Some? && fro.value.loc.None? {
+        return true;
+      }
+    }
+    return false;
+  }
+  method CanEvict(s: ImplVariables, ref: BT.G.Reference) returns (b: bool)
+  {
+    var eph: Option<Entry> := s.ephemeralIndirectionTable.GetEntry(ref);
+    if eph.Some? {
+      return BC.OutstandingWrite(ref, eph.value.loc.value) !in s.outstandingBlockWrites.Values;
+    } else {
+      return true;
+    }
+  }
+  method EvictOrDealloc(inout old_s: ImplVariables, io: DiskIOHandler) returns (s: ImplVariables)
+    modifies io
+  {
+    s := old_s;
+    var ref: Option<Reference> := FindDeallocable(s);
+    if ref.Some? {
+      var _inout_tmp_0: ImplVariables;
+      _inout_tmp_0 := Dealloc(inout s, io, ref.value);
+      s := _inout_tmp_0;
+    } else {
+      var refOpt: Option<uint64> := s.lru.NextOpt();
+      if refOpt.Some? {
+        var ref: uint64 := refOpt.value;
+        var needToWrite: bool := NeedToWrite(s, ref);
+        if needToWrite {
+          if s.outstandingIndirectionTableWrite.None? {
+            var _inout_tmp_1: ImplVariables;
+            _inout_tmp_1 := TryToWriteBlock(inout s, io, ref);
+            s := _inout_tmp_1;
+          } else 
+        } else {
+          var canEvict: bool := CanEvict(s, ref);
+          if canEvict {
+            var _inout_tmp_2: LinearLru;
+            _inout_tmp_2 := s.lru.Remove(inout s.lru, ref);
+            s := s.(lru := _inout_tmp_2);
+            var _inout_tmp_3: LMutCache;
+            _inout_tmp_3 := s.cache.Remove(inout s.cache, ref);
+            s := s.(cache := _inout_tmp_3);
+          } else 
+        }
+      } else 
+    }
+  }
+  method PageInNodeReqOrMakeRoom(inout old_s: ImplVariables, io: DiskIOHandler, ref: BT.G.Reference)
+      returns (s: ImplVariables)
+    modifies io
+  {
+    s := old_s;
+    if s.TotalCacheSize() <= MaxCacheSizeUint64() - 1 {
+      var _inout_tmp_0: ImplVariables;
+      _inout_tmp_0 := PageInNodeReq(inout s, io, ref);
+      s := _inout_tmp_0;
+    } else {
+      var c: uint64 := CacheImpl.CacheCount(s.cache);
+      if c > 0 {
+        var _inout_tmp_1: ImplVariables;
+        _inout_tmp_1 := EvictOrDealloc(inout s, io);
+        s := _inout_tmp_1;
+      } else 
+    }
+  }
+}
+Dafny program verifier did not attempt verification

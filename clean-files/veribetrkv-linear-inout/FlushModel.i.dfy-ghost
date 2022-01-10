@@ -1,0 +1,192 @@
+  var Length: int  // immutable
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): bool
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): bool
+    reads reads(x0, x1, x2, x3, x4)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): set<object?>
+    reads reads(x0, x1, x2, x3, x4)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function flush(s: BBC.Variables, parentref: BT.G.Reference, slot: int, childref: BT.G.Reference, child: Node, refUpperBound: uint64): BBC.Variables
+    requires BBC.Inv(s)
+    requires s.Ready?
+    requires parentref in s.ephemeralIndirectionTable.graph
+    requires parentref in s.cache
+    requires s.cache[parentref].children.Some?
+    requires 0 <= slot < |s.cache[parentref].children.value|
+    requires s.cache[parentref].children.value[slot] == childref
+    requires forall r: uint64 | r in s.ephemeralIndirectionTable.graph :: r <= refUpperBound
+    requires childref in s.ephemeralIndirectionTable.graph
+    requires childref in s.cache
+    requires s.cache[childref] == child
+  {
+    if s.frozenIndirectionTable.Some? && s.frozenIndirectionTable.value.hasEmptyLoc(parentref) then
+      s
+    else
+      ghost var parent: G.Node := s.cache[parentref]; if BoundedKeySeq(child.pivotTable, parent.buckets[slot].keys) then WeightBucketLeBucketList(parent.buckets, slot); lemmaChildrenConditionsOfNode(s, childref); lemmaChildrenConditionsOfNode(s, parentref); var partialFlushResult(newparentBucket: Bucket, newbuckets: seq<Bucket>) := BucketFlushModel.partialFlush(parent.buckets[slot], child.pivotTable, child.buckets); ghost var newchild: BT.G.Node := child.(buckets := newbuckets); var (s2: BC.Variables, newchildref: Option<BT.G.Reference>) := allocBookkeeping(s, newchild.children, refUpperBound); lemmaChildrenConditionsUpdateOfAllocBookkeeping(s, newchild.children, parent.children.value, slot, refUpperBound); if newchildref.None? then s2 else ghost var newparent: Node := BT.G.Node(parent.pivotTable, Some(parent.children.value[slot := newchildref.value]), parent.buckets[slot := newparentBucket]); assert s2.WriteAllocConditions(); ghost var s2: BC.Variables := s2.(cache := s2.cache[newchildref.value := newchild][parentref := newparent]); ghost var s2: BBC.Variables := writeBookkeeping(s2, parentref, newparent.children); s2 else s
+  }
+  lemma {:timeLimitMultiplier 3} flushCorrect(s: BBC.Variables, parentref: BT.G.Reference, slot: int, childref: BT.G.Reference, child: Node, refUpperBound: uint64)
+    requires flush.requires(s, parentref, slot, childref, child, refUpperBound)
+    requires s.totalCacheSize() <= MaxCacheSize() - 1
+    ensures ghost var s': BC.Variables := flush(s, parentref, slot, childref, child, refUpperBound); s'.Ready? && s'.totalCacheSize() <= MaxCacheSize() && StateBCImpl.WFCache(s'.cache) && betree_next(s, s')
+  {
+    ghost var s': BBC.Variables := flush(s, parentref, slot, childref, child, refUpperBound);
+    if s.frozenIndirectionTable.Some? && s.frozenIndirectionTable.value.hasEmptyLoc(parentref) {
+      assert noop(s, s);
+    } else {
+      ghost var parent: G.Node := s.cache[parentref];
+      if BoundedKeySeq(child.pivotTable, parent.buckets[slot].keys) {
+        WeightBucketLeBucketList(parent.buckets, slot);
+        lemmaChildrenConditionsOfNode(s, childref);
+        lemmaChildrenConditionsOfNode(s, parentref);
+        var partialFlushResult(newparentBucket: Bucket, newbuckets: seq<Bucket>) := BucketFlushModel.partialFlush(parent.buckets[slot], child.pivotTable, child.buckets);
+        ghost var flushedKeys: set<Key> := {};
+        if BucketWellMarshalled(parent.buckets[slot]) && BucketListWellMarshalled(child.buckets) && WFBucketListProper(child.buckets, child.pivotTable) {
+          flushedKeys := BucketFlushModel.partialFlushCorrect(parent.buckets[slot], child.pivotTable, child.buckets);
+        }
+        assert forall key: Key | key in flushedKeys :: key in parent.buckets[slot].keys;
+        BucketFlushModel.partialFlushWeightBound(parent.buckets[slot], child.pivotTable, child.buckets);
+        WeightBucketListShrinkEntry(parent.buckets, slot, newparentBucket);
+        assert childref in s.cache;
+        assert childref in s.ephemeralIndirectionTable.graph;
+        assert child == s.cache[childref];
+        assert parentref in s.cache;
+        assert parentref in s.ephemeralIndirectionTable.graph;
+        assert parent == s.cache[parentref];
+        ghost var newchild: BT.G.Node := child.(buckets := newbuckets);
+        var (s2: BC.Variables, newchildref: Option<BT.G.Reference>) := allocWithNode(s, newchild, refUpperBound);
+        reveal_allocBookkeeping();
+        if newchildref.None? {
+          assert noop(s, s2);
+        } else {
+          ghost var newparent: Node := BT.G.Node(parent.pivotTable, Some(parent.children.value[slot := newchildref.value]), parent.buckets[slot := newparentBucket]);
+          ghost var s3: BBC.Variables := writeWithNode(s2, parentref, newparent);
+          reveal_writeBookkeeping();
+          assert s3 == s';
+          forall ref: NativeTypes.uint64 | ref in BT.G.Successors(newparent)
+            ensures ref in s2.ephemeralIndirectionTable.graph
+          {
+            if ref == newchildref.value {
+            } else {
+              assert ref in BT.G.Successors(parent);
+              lemmaChildInGraph(s, parentref, ref);
+              assert ref in s2.ephemeralIndirectionTable.graph;
+            }
+          }
+          assert BC.BlockPointsToValidReferences(newparent, s2.ephemeralIndirectionTable.graph);
+          forall ref: NativeTypes.uint64 | ref in BT.G.Successors(newchild)
+            ensures ref in s.ephemeralIndirectionTable.graph
+          {
+            lemmaChildInGraph(s, childref, ref);
+          }
+          allocCorrect(s, newchild, refUpperBound);
+          writeCorrect(s2, parentref, newparent);
+          ghost var flushStep: NodeFlush := BT.NodeFlush(parentref, parent, newparent, childref, child, newchildref.value, newchild, slot);
+          assert BT.ValidFlush(flushStep);
+          ghost var step: BetreeStep := BT.BetreeFlush(flushStep);
+          assert newparent == BT.FlushOps(flushStep)[1].node;
+          assert BC.Alloc(s, s2, newchildref.value, newchild);
+          assert BC.Dirty(s2, s', parentref, newparent);
+          BC.MakeTransaction2(s, s2, s', BT.BetreeStepOps(step));
+          assert BBC.BetreeMove(s, s', BlockDisk.NoDiskOp, AdvanceOp(UI.NoOp, true), step);
+          assert stepsBetree(s, s', AdvanceOp(UI.NoOp, true), step);
+          assert stepsBetree(s, s', AdvanceOp(UI.NoOp, true), step);
+        }
+      } else {
+        assert noop(s, s);
+      }
+    }
+  }
+Dafny program verifier did not attempt verification

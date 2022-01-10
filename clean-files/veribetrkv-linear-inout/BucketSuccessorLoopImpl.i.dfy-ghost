@@ -1,0 +1,160 @@
+  var Length: int  // immutable
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): bool
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5, x6: T6, x7: T7, x8: T8, x9: T9): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): bool
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4, x5: T5): set<object?>
+    reads reads(x0, x1, x2, x3, x4, x5)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3): bool
+    reads reads(x0, x1, x2, x3)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3): set<object?>
+    reads reads(x0, x1, x2, x3)
+  function requires(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): bool
+    reads reads(x0, x1, x2, x3, x4)
+  function reads(x0: T0, x1: T1, x2: T2, x3: T3, x4: T4): set<object?>
+    reads reads(x0, x1, x2, x3, x4)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(): bool
+    reads reads()
+  function reads(): set<object?>
+    reads reads()
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0): bool
+    reads reads(x0)
+  function reads(x0: T0): set<object?>
+    reads reads(x0)
+  function requires(x0: T0, x1: T1, x2: T2): bool
+    reads reads(x0, x1, x2)
+  function reads(x0: T0, x1: T1, x2: T2): set<object?>
+    reads reads(x0, x1, x2)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  function requires(x0: T0, x1: T1): bool
+    reads reads(x0, x1)
+  function reads(x0: T0, x1: T1): set<object?>
+    reads reads(x0, x1)
+  method GetSuccessorInBucketStack(g': Generator, ghost buckets: seq<Bucket>, maxToFind: uint64, start: UI.RangeStart, upTo: Option<Key>)
+      returns (res: UI.SuccResultList)
+    requires forall i: int | 0 <= i < |buckets| :: WFBucket(buckets[i])
+    requires |buckets| >= 1
+    requires |buckets| < 18446744073709551616
+    requires g'.Inv() && g'.I() == BucketGeneratorModel.GenFromBucketStackWithLowerBound(buckets, start)
+    requires maxToFind >= 1
+    ensures res == BucketSuccessorLoopModel.GetSuccessorInBucketStack(buckets, maxToFind as int, start, upTo)
+  {
+    BucketSuccessorLoopModel.reveal_GetSuccessorInBucketStack();
+    BucketSuccessorLoopModel.reveal_ProcessGenerator();
+    var g: Generator := g';
+    var results: array<UI.SuccResult> := new UI.SuccResult[maxToFind];
+    var results_len: uint64 := 0;
+    var done: bool := false;
+    while !done
+      invariant g.Inv()
+      invariant forall i: int | 0 <= i < |buckets| :: WFBucket(buckets[i])
+      invariant 0 <= results_len <= maxToFind
+      invariant !done ==> results_len < maxToFind
+      invariant !done ==> BucketSuccessorLoopModel.GetSuccessorInBucketStack(buckets, maxToFind as int, start, upTo) == BucketSuccessorLoopModel.ProcessGenerator(g.I(), maxToFind as int, upTo, results[..results_len])
+      invariant done ==> res == BucketSuccessorLoopModel.GetSuccessorInBucketStack(buckets, maxToFind as int, start, upTo)
+      decreases !done, BucketGeneratorModel.decreaser(g.I())
+    {
+      BucketGeneratorModel.lemmaDecreaserDecreases(g.I());
+      ghost var old_results: seq<SuccResult> := results[..results_len];
+      var next: BucketIteratorModel.IteratorOutput := g.GenLeft();
+      var okay: bool := next.Next?;
+      if okay && upTo.Some? {
+        var c: int32 := cmp(next.key, upTo.value);
+        if c >= 0 {
+          okay := false;
+        }
+      }
+      assert okay == (next.Next? && (upTo.Some? ==> Ord.lt(next.key, upTo.value)));
+      if okay {
+        var v: Value := Merge(next.msg, DefineDefault()).value;
+        if v != DefaultValue() {
+          results[results_len] := UI.SuccResult(next.key, v);
+          results_len := results_len + 1;
+          assert results[..results_len] == old_results + [UI.SuccResult(next.key, v)];
+          assert results_len as int == |results[..results_len]|;
+          if results_len < maxToFind {
+            g.GenPop();
+          } else {
+            done := true;
+            res := UI.SuccResultList(results[..results_len], UI.EInclusive(next.key));
+          }
+        } else {
+          g.GenPop();
+        }
+      } else {
+        done := true;
+        res := UI.SuccResultList(results[..results_len], if upTo.Some? then UI.EExclusive(upTo.value) else UI.PositiveInf);
+      }
+    }
+    g.Free();
+  }
+Dafny program verifier did not attempt verification

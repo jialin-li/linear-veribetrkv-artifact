@@ -1,0 +1,155 @@
+  var Length: int  // immutable
+  method pushSync(inout s: Full) returns (id: uint64)
+  {
+    id := s.jc.pushSync();
+  }
+  method receiveLoc(inout s: Variables, loc: DiskLayout.Location)
+  {
+    var Unready() := s;
+    s := Variables.Loading(loc, None);
+  }
+  method initialization(inout s: Full, io: DiskIOHandler)
+    modifies io
+  {
+    if s.jc.status.StatusLoadingSuperblock? {
+      if s.jc.superblock1.SuperblockSuccess? && s.jc.superblock2.SuperblockSuccess? {
+        s.jc.finishLoadingSuperblockPhase();
+        var loc: Location := s.jc.superblock.indirectionTableLoc;
+        receiveLoc(inout s.bc, loc);
+      } else if s.jc.superblock1Read.None? && s.jc.superblock1.SuperblockUnfinished? {
+        s.jc.pageInSuperblockReq(io, 0);
+      } else if s.jc.superblock2Read.None? && s.jc.superblock2.SuperblockUnfinished? {
+        s.jc.pageInSuperblockReq(io, 1);
+      } else {
+        print "initialization: doing nothing, superblock reads out\n";
+      }
+    } else if s.jc.status.StatusLoadingOther? {
+      s.jc.tryFinishLoadingOtherPhase(io);
+    } else if s.bc.Loading? && s.bc.indirectionTableRead.None? {
+      IOImpl.PageInIndirectionTableReq(inout s.bc, io);
+    } else if s.bc.Ready? {
+      var isEmpty: bool := s.jc.isReplayEmpty();
+      if !isEmpty {
+        var je: JournalEntry := s.jc.journalist.replayJournalTop();
+        var success: bool := InsertImpl.insert(inout s.bc, io, je.key, je.value, true);
+        if success {
+          s.jc.journalReplayOne(je);
+        }
+      } else {
+        print "initialization: doing nothing, no replay journal\n";
+      }
+    } else {
+      print "initialization: doing nothing\n";
+    }
+  }
+  method doSync(inout s: Full, io: DiskIOHandler, graphSync: bool)
+      returns (wait: bool)
+    modifies io
+  {
+    wait := false;
+    if s.jc.isFrozen {
+      if s.jc.frozenLoc.Some? {
+        wait := s.jc.tryAdvanceLocation(io);
+      } else {
+        var froze: bool, wait0: bool := SyncImpl.sync(inout s.bc, io);
+        wait := wait0;
+      }
+    } else if s.jc.superblockWrite.Some? {
+      wait := true;
+    } else {
+      if graphSync {
+        var froze: bool, wait0: bool := SyncImpl.sync(inout s.bc, io);
+        wait := wait0;
+        if froze {
+          s.jc.freeze();
+        } else 
+      } else {
+        wait := s.jc.tryAdvanceLog(io);
+      }
+    }
+  }
+  method getCommitterSyncState(s: Full, id: uint64) returns (res: Option<JC.SyncReqStatus>)
+  {
+    res := LinearMutableMap.Get(s.jc.syncReqs, id);
+  }
+  function method isCommitterStatusReady(s: Full): bool
+  {
+    s.jc.status.StatusReady?
+  }
+  function method isInitialized(s: Full): (b: bool)
+  {
+    if s.bc.Ready? && isCommitterStatusReady(s) then
+      s.jc.isReplayEmpty()
+    else
+      false
+  }
+  method popSync(inout s: Full, io: DiskIOHandler, id: uint64, graphSync: bool)
+      returns (success: bool, wait: bool)
+    modifies io
+  {
+    wait := false;
+    var committerSyncState: Option<JC.SyncReqStatus> := getCommitterSyncState(s, id);
+    if committerSyncState == Some(JC.State1) {
+      s.jc.popSync(id);
+      success := true;
+    } else {
+      var isInit: bool := isInitialized(s);
+      if !isInit {
+        initialization(inout s, io);
+        success := false;
+      } else {
+        wait := doSync(inout s, io, graphSync);
+        success := false;
+      }
+    }
+  }
+  method query(inout s: Full, io: DiskIOHandler, key: Key)
+      returns (result: Option<Value>)
+    modifies io
+  {
+    var is_init: bool := isInitialized(s);
+    if !is_init {
+      initialization(inout s, io);
+      result := None;
+    } else {
+      result := QueryImpl.query(inout s.bc, io, key);
+    }
+  }
+  method succ(inout s: Full, io: DiskIOHandler, start: UI.RangeStart, maxToFind: uint64)
+      returns (result: Option<UI.SuccResultList>)
+    modifies io
+  {
+    var is_init: bool := isInitialized(s);
+    if !is_init {
+      initialization(inout s, io);
+      result := None;
+    } else {
+      result := SuccImpl.doSucc(inout s.bc, io, start, maxToFind);
+    }
+  }
+  function method canJournalistAppend(s: Full, key: Key, value: Value): (b: bool)
+  {
+    s.jc.journalist.canAppend(Journal.JournalInsert(key, value))
+  }
+  method insert(inout s: Full, io: DiskIOHandler, key: Key, value: Value)
+      returns (success: bool)
+    modifies io
+  {
+    var is_init: bool := isInitialized(s);
+    if !is_init {
+      initialization(inout s, io);
+      success := false;
+    } else {
+      var can_append: bool := canJournalistAppend(s, key, value);
+      if can_append {
+        success := InsertImpl.insert(inout s.bc, io, key, value, false);
+        if success {
+          s.jc.journalAppend(key, value);
+        } else 
+      } else {
+        var wait: bool := doSync(inout s, io, true);
+        success := false;
+      }
+    }
+  }
+Dafny program verifier did not attempt verification

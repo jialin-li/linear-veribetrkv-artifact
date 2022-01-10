@@ -1,0 +1,5 @@
+// DiskOpModel.i.dfy
+module DiskOpModel {
+  datatype Constants = Constants
+  datatype IO = IOInit(id: uint64, id2: uint64) | IOReqRead(id: uint64, reqRead: D.ReqRead) | IOReqWrite(id: uint64, reqWrite: D.ReqWrite) | IOReqWrite2(id: uint64, id2: uint64, reqWrite1: D.ReqWrite, reqWrite2: D.ReqWrite) | IORespRead(id: uint64, respRead: D.RespRead) | IORespWrite(id: uint64, respWrite: D.RespWrite)
+}
