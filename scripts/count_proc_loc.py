@@ -126,7 +126,7 @@ def main():
     linear_combined = generate_linear_json(linear_ghost, linear_inout_code)
     proc_data[linear] = generate_code_json(linear_combined, linear_code)
 
-    with open("/home/root/output/proc_info.json", "w+") as out:
+    with open("/root/output/proc_info.json", "w+") as out:
         json.dump(proc_data, out)
 
     print("tada!~")

@@ -62,6 +62,6 @@ def csv_for_module_loc(data, repos, csvfile):
             print(row)
             print(t[0]+": "+str(sum))
 
-with open("/home/root/output/proc_info.json", 'r') as file:
+with open("/root/output/proc_info.json", 'r') as file:
     data = json.load(file)
-    csv_for_module_loc(data, [dynamic, linear], "/home/root/output/loc.csv")
+    csv_for_module_loc(data, [dynamic, linear], "/root/output/loc.csv")

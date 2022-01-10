@@ -88,9 +88,9 @@ methods_data = {}
 time_data = {}
 methods_list = {}
 
-with open("/home/root/output/proc_time.json", "r") as ptime:
+with open("/root/output/proc_time.json", "r") as ptime:
   time_data = json.load(ptime)
-with open("/home/root/output/methods_list.json", "r") as mlist:
+with open("/root/output/methods_list.json", "r") as mlist:
   methods_list = json.load(mlist)
   
 dyanmic_methods = get_method_vertime(methods_list[dynamic], time_data[dynamic])
@@ -134,7 +134,7 @@ for prefix in EQUIV_MAP:
         methods_data[proc]["linear"] = methods_data[proc]["linear"] + get_vertime(linear_methods[xproc])
 
 # export the direct method verification time comparison into a json file
-with open("/home/root/output/method_df_linear.json", "w+") as out:
+with open("/root/output/method_df_linear.json", "w+") as out:
   json.dump(methods_data, out)
 
 # we compute the relative execution time for methods that took over 5s to verify
@@ -150,7 +150,7 @@ for m in methods_data:
 sorted_reltime = sorted(over5s.items(), key=lambda kv: kv[1]["reltime"])
 pp.pprint(sorted_reltime)
 
-with open("/home/root/output/method_diff_relative_5s.csv", "w+") as out:
+with open("/root/output/method_diff_relative_5s.csv", "w+") as out:
   write_csv(sorted_reltime, out)
 
 print("done")

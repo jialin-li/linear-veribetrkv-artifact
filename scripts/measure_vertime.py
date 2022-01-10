@@ -5,7 +5,7 @@ from os.path import exists
 dfny_tool = "tools/local-dafny.sh /compile:0 /timeLimit:40 "
 dfny_nl_tool = "tools/local-dafny-nonlinear.sh /compile:0 /timeLimit:40 "
 
-RESULT_ROOT = "/home/root/output/time-data"
+RESULT_ROOT = "/root/output/time-data"
 
 nl_files = {"BookkeepingModel.i.dfy",
     "IOImpl.i.dfy",

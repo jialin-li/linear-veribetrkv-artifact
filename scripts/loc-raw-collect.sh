@@ -1,7 +1,7 @@
 #!/bin/bash
 
 TMP_DIR=/tmp
-OUTPUT_DIR=/home/root/output
+OUTPUT_DIR=/rootut
 INPUT_DIR_LIST=("./lib/DataStructures" "./lib/Marshalling" "./lib/Buckets" "./Impl")
 
 dynamic="veribetrkv-dynamic-frames"
@@ -23,7 +23,7 @@ collect_counts() {
     done
     
     echo "$repo done, result at $repo_result"
-    cd /home/root
+    cd /root
 }
 
 main() {

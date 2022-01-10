@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
 
-data = pandas.read_csv('/home/root/output/method_diff_relative_5s.csv')
+data = pandas.read_csv('/root/output/method_diff_relative_5s.csv')
 
 def graph_refline(x, arr, p, **kwargs):
     y = np.interp(x, arr, p)
@@ -47,4 +47,4 @@ ax.xaxis.set_major_formatter(mtick.PercentFormatter())
 plt.tick_params(axis='x', labelsize=14)
 plt.tick_params(axis='y', labelsize=14)
 plt.legend(labels=["VeriBetrKV-LT-Method"], loc=4, prop={"size":16})
-plt.savefig('/home/root/output/figures/method-diff-cdf.png')
+plt.savefig('/root/output/figures/method-diff-cdf.png')

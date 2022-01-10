@@ -40,18 +40,18 @@ apt-get install -y apt-transport-https && \
 apt-get update && \
 apt-get install -y dotnet-sdk-5.0
 
-COPY veribetrkv-dynamic-frames /home/root/veribetrkv-dynamic-frames
-WORKDIR /home/root/veribetrkv-dynamic-frames
+COPY veribetrkv-dynamic-frames /root/veribetrkv-dynamic-frames
+WORKDIR /root/veribetrkv-dynamic-frames
 RUN tools/install-dafny.sh
 
-COPY veribetrkv-linear /home/root/veribetrkv-linear
-WORKDIR /home/root/veribetrkv-linear
+COPY veribetrkv-linear /root/veribetrkv-linear
+WORKDIR /root/veribetrkv-linear
 RUN tools/install-linear-dafny.sh
 
-COPY scripts /home/root/scripts
-COPY clean-files /home/root/clean-files
-COPY error-files /home/root/error-files
+COPY scripts /root/scripts
+COPY clean-files /root/clean-files
+COPY error-files /root/error-files
 
-WORKDIR /home/root
+WORKDIR /root
 RUN /bin/bash
 

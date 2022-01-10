@@ -37,5 +37,5 @@ for dir_name in os.listdir(RESULT_ROOT):
     for measure in {"t", "p"}:
         parse_repo_times(os.path.join(RESULT_ROOT,dir_name), measure, times[dir_name])
 
-with open("/home/root/output/file_time.json", "w") as f:
+with open("/root/output/file_time.json", "w") as f:
     f.write(json.dumps(times))

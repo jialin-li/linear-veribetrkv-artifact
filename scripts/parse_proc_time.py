@@ -81,5 +81,5 @@ for dir_name in os.listdir(RESULT_ROOT):
     traces[dir_name] = dict()
     parse_repo_traces(os.path.join(RESULT_ROOT, dir_name), traces[dir_name])
 
-with open("/home/root/output/proc_time.json", "w") as f:
+with open("/root/output/proc_time.json", "w") as f:
     f.write(json.dumps(traces))

@@ -47,7 +47,7 @@ def main():
     methods_data[dynamic] = get_methods(os.path.join(srcdir, dynamic))
     methods_data[linear] = get_methods(os.path.join(srcdir, linear))
 
-    with open("/home/root/output/methods_list.json", "w+") as out:
+    with open("/root/output/methods_list.json", "w+") as out:
         json.dump(methods_data, out)
 
     print("done generate methods!~")

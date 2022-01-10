@@ -9,7 +9,7 @@ def get_time(data, file):
         return float(data[file]["t"][0]), float(data[file]["p"][0])
     return 0, 0
 
-with open("/home/root/output/file_time.json", "r") as file:
+with open("/root/output/file_time.json", "r") as file:
     times = json.load(file)
     results = []
     for (comp, sections) in COMPONENT_MAP.items():
@@ -80,6 +80,6 @@ plt.tick_params(axis='x', length = 0, labelsize=20)
 plt.tick_params(axis='y', labelsize=20)
 
 ax.legend(labels=['VeriBetrKV-DF-TC', 'VeriBetrKV-DF-SMT', "VeriBetrKV-LT-TC", "VeriBetrKV-LT-SMT"], bbox_to_anchor=(0,1.02,1,0.2), loc="lower left", mode="expand", borderaxespad=0, ncol=4, prop={"size":19})
-plt.savefig("/home/root/output/figures/module-vertime.png")
+plt.savefig("/root/output/figures/module-vertime.png")
 
 print("module verification time graph exported")

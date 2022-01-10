@@ -14,7 +14,7 @@ def rel_diff(d_proof, l_proof):
     rel_diff = round(diff *100, 1)
     return "-"+str(rel_diff)+"%"
 
-with open("/home/root/output/loc.csv", "r") as file:
+with open("/root/output/loc.csv", "r") as file:
     reader = csv.reader(file)
     data = list(reader)
 
@@ -74,6 +74,6 @@ with open("/home/root/output/loc.csv", "r") as file:
     plt.figtext(0.52, 0.01, "Figure (b)", wrap=True, weight="bold")
 
     plt.axvline(x=1.25, dashes=[2,2])
-    plt.savefig( "/home/root/output/figures/loc-breakdown.png", transparent=False)
+    plt.savefig( "/root/output/figures/loc-breakdown.png", transparent=False)
 
     print("loc breakdown graph exported")
