@@ -1,0 +1,2052 @@
+=====================================================================
+Theorem: Type preservation
+  If L; R; X |- e: u t
+  and e --> e'
+  Then there is some L', R'
+  such that L, L'; R'; X |- e': u t
+  and any r in domain(R') - domain(R) was chosen as a fresh region name during e --> e' and R'(r) = linear
+  and any r in domain(R) - domain(R') is such that R(r) = linear
+  and for any l in domain(L'), l was chosen as a fresh location during e --> e' and RegionOfLoc(l) = r and r -> linear in R
+
+Induction on L; R; X |- e: u t
+Let C = L; R; X
+
+
+NON-CONGRUENCE CASES
+
+CASE i1 + i2 --> i3
+  By typing rule for i1 + i2:
+    C = C1 # C2
+    C1 |- i1: ordinary int
+    C2 |- i2: ordinary int
+  By typing rule for i1 and i2:
+    C1 = !C1
+    C2 = !C2
+    !C1 |- i1: ordinary int
+    !C2 |- i2: ordinary int
+  By typing rule for i3:
+    !C |- i3: ordinary int
+    C |- i3: ordinary int
+
+CASE v1; e2 --> e2
+  By typing rule for v1; e2:
+    u1 != linear
+    C1, shared(Cb) |- v1: u1 t1
+    C2, linear(Cb) |- e2: u2 t2
+  By Lemma: Value nonlinear, C1 = !C1, so C1 # C2 = C2
+  (C1 # C2), linear(Cb) |- e2: u2 t2
+
+CASE let u x = v1 in e2 -> e2[x := v1]
+  By typing:
+    C = (C1 # C2), linear(Cb)
+    If u1 = shared then Cb = {}; {}; {}
+    C1, shared(Cb)             |- v1: u1 t1
+    C2, linear(Cb), x -> u1 t1 |- e2: u2 t2
+  If u1 = shared, then:
+    C1 |- v1: u1 t1
+  If u1 != shared, then by Lemma: Value nonsharing:
+    C1 |- v1: u1 t1
+  So:
+    C1 |- v1: u1 t1
+    C2, linear(Cb), x -> u1 t1 |- e2: u2 t2
+  By Lemma: Single substitution (with Cv = C1, Ce = (C2, linear(Cb)), ux = u1, tx = t1, v = v1, ue = u2, te = t2):
+    (C2, linear(Cb)) # C1 |- e2[x := v1]: u2 t2
+    (C1 # C2), linear(Cb) |- e2[x := v1]: u2 t2
+
+CASE tuple(v1 ... vi ... vn).i -> vi
+  By typing rule for e.i:
+    C |- tuple(v1 ... vi ... vn): shared tuple(u1 t1 ... ui ti ... un tn)
+    ---------------------------------------------------------------------
+    C |- tuple(v1 ... vi ... vn).i: share_as(shared, ui) ti
+  By Lemma: Value nonlinear, C = !C
+  By typing rule for tuple:
+    C = C1 # ... # Cn
+    ...
+    Ci |- vi: share_as(share, ui) ti
+    ...
+  Since C = !C, we know Ci = !Ci:
+    !Ci |- vi: share_as(share, ui) ti
+  By Lemma: Weakening:
+    !C |- vi: share_as(share, ui) ti
+    C |- vi: share_as(share, ui) ti
+
+CASE let tuple(x1 ... xn) = tuple(v1 ... vn) in ex -> ex[x1 := v1 ... xn := vn]
+  By typing rule for let-tuple:
+    C = (C0 # Cx), linear(Cb)
+    C0, shared(Cb) |- tuple(v1 ... vn): linear tuple(u1 t1 ... un tn)
+    Cx, linear(Cb), x1 -> u1 t1, ..., xn -> un tn |- ex: ux tx
+    -----------------------------------------------------------------------------
+    (C0 # Cx), linear(Cb) |- let tuple(x1 ... xn) = tuple(v1 ... vn) in ex: ux tx
+  By Lemma: Value nonsharing:
+    C0 |- tuple(v1 ... vn): linear tuple(u1 t1 ... un tn)
+  By typing rule for linear tuple:
+    C0 = C1 # ... # Cn
+    C1 |- v1: u1 t1
+    ...
+    Cn |- vn: un tn
+  By Lemma: Substitution:
+    (Cx, linear(Cb)) # C1 # ... # Cn |- ex[x1 := v1 ... xn := vn]: ux tx
+    (Cx, linear(Cb)) # C0 |- ex[x1 := v1 ... xn := vn]: ux tx
+    (C0 # Cx), linear(Cb) |- ex[x1 := v1 ... xn := vn]: ux tx
+
+CASE new_region() -> r {} where r is fresh
+  By typing rule for new_region:
+    C = !C
+    !C |- new_region(): linear region
+  Let !C = L; !R; !X
+  Since r is fresh, {l in domain(L) | RegionOfLoc(l) = r} = {}
+  By typing rule for L; R |- d: linear:
+    L; !R |- {}: linear
+  By typing rule for r {}:
+    domain({}) = {l in domain(L) | RegionOfLoc(l) = r}
+    L; !R |- {}: linear
+    -------------------------------------------------
+    L; !R # {r -> linear}; !X |- r {}: linear region
+  Let R' = R, {r -> linear} and L' = {}
+    L, L'; R'; X |- r {}: linear region
+  We satisfy:
+    any r in domain(R') - domain(R) was chosen as a fresh region name during e --> e' and R'(r) = linear
+    any r in domain(R) - domain(R') is such that R(r) = linear
+    for any l in domain(L'), l was chosen as a fresh location during e --> e' and RegionOfLoc(l) = r and r -> linear in R
+
+CASE free_region(r d) -> 0
+  By typing rule for free_region:
+    C |- r d: linear region
+    -----------------------------------
+    C |- free_region(r d): ordinary int
+  By typing rule for r d:
+    X = !X
+    L; R # {r -> linear}; !X |- r d: linear region
+  By typing rule for i:
+    L; !R; !X |- 0: ordinary int
+  Let R' = !R and L' = {}
+    L, L'; R'; X |- 0: ordinary int
+  We satisfy:
+    any r in domain(R') - domain(R) was chosen as a fresh region name during e --> e' and R'(r) = linear
+    any r in domain(R) - domain(R') is such that R(r) = linear
+    for any l in domain(L'), l was chosen as a fresh location during e --> e' and RegionOfLoc(l) = r and r -> linear in R
+  (Note: we do not remove d's locations from L, since other regions may refer to these locations even after d is freed)
+
+CASE alloc s @ r d -> tuple(l, r (d, l -> s)) where l is fresh and RegionOfLoc(l) = r
+  By typing rule for alloc:
+    C = C0 # C1 # ... # Cn
+    s = S(v1 ... vn)
+    StructType(S) = (u1 t1, ..., un tn)
+    C0 |- r d: linear region
+    C1 |- v1: u1 t1
+    ...
+    Cn |- vn: un tn
+    ---------------------------------------------------------------------------------
+    C0 # C1 # ... # Cn |- alloc s @ r d: linear tuple(ordinary ref(S), linear region)
+  Let C0 = L; R0; X0 and C1 = L; R1; X1 and ... and Cn = L; Rn; Xn
+  By Lemma: Value strengthening:
+    L; R1; {} |- v1: u1 t1
+    ...
+    L; Rn; {} |- vn: un tn
+  By typing rule for s with u = linear:
+    StructType(S) = (u1 t1, ..., un tn)
+    L; R1; {} |- v1: u1 t1
+    ...
+    L; Rn; {} |- vn: un tn
+    ---------------------------------------------------------
+    L; R1 # ... # Rn; {} |- S(v1 ... vn): S containing linear
+  By typing rule for r d:
+    R0 = R0' # {r -> linear}
+    X0 = !X0
+    domain(d) = {l' in domain(L) | RegionOfLoc(l') = r}
+    L; R0' |- d: linear
+    ---------------------------------------------------
+    L; R0' # {r -> linear}; !X0 |- r d: linear region
+  Because we have r -> linear in R0:
+    r not in domain(R0') (needed for Lemma: Region extension)
+    r not in domain(R1 # ... # Rn) (needed for Lemma: Region extension)
+  By typing rule for d:
+    R0' = R1' # ... # Rm'
+    L; R1'; {} |- s1: L(l1) containing linear
+    ...
+    L; Rm'; {} |- sm: L(lm) containing linear
+    ---------------------------------------------------
+    L; R1' # ... # Rm' |- l1 -> s1 ... lm -> sm: linear
+  From above:
+    L; R1 # ... # Rn; {} |- S(v1 ... vn): S containing linear
+  Let L' = {l -> S} and Rs = R1 # ... # Rn, remembering s = S(v1 ... vn):
+    L; Rs; {} |- s: (L, L')(l) containing linear
+  By Lemma: Region extension:
+    L, L'; Rs; {} |- s: (L, L')(l) containing linear
+  By Lemma: Region extension:
+    R0 = R1' # ... # Rm'
+    L, L'; R1'; {} |- s1: (L, L')(l1) containing linear
+    ...
+    L, L'; Rm'; {} |- sm: (L, L')(lm) containing linear
+    -------------------------------------------------------
+    L, L'; R1' # ... # Rm' |- l1 -> s1 ... lm -> sm: linear
+  By typing rule for d, l -> s:
+    R0' = R1' # ... # Rm'
+    L, L'; R1'; {} |- s1: (L, L')(l1) containing linear
+    ...
+    L, L'; Rm'; {} |- sm: (L, L')(lm) containing linear
+    L, L'; Rs; {} |- s: (L, L')(l) containing linear
+    --------------------------------------------------------------------
+    L, L'; R1' # ... # Rm' # Rs |- l1 -> s1 ... lm -> sm, l -> s: linear
+  By typing rule for r (d, l -> s):
+    R0 = R0' # {r -> linear}
+    X0 = !X0
+    domain(d, l -> s) = {l' in domain(L, L') | RegionOfLoc(l') = r}
+    L, L'; R0' # Rs |- d: linear
+    --------------------------------------------------------------------
+    L, L'; R0' # Rs # {r -> linear}; !X0 |- r (d, l -> s): linear region
+  By Lemma: Value nonlinear, C1 = !C1 ... Cn = !Cn, so X = !X and Rs = !Rs
+  By Lemma: Weakening:
+    L, L'; R0' # !Rs # {r -> linear}; !X |- r (d, l -> s): linear region
+  By typing rule for l:
+    L, l -> S, !Rs; !X |- l: ordinary ref(S)
+    L, L', !Rs; !X |- l: ordinary ref(S)
+  By typing rule for tuple:
+    L, L', !Rs; !X |- l: ordinary ref(S)
+    L, L'; R0' # !Rs # {r -> linear}; !X |- r (d, l -> s): linear region
+    -------------------------------------------------------------------------------------------------------------
+    L, L'; R0' # !Rs # {r -> linear}; !X |- tuple(l, r (d, l -> s)): linear tuple(ordinary ref(S), linear region)
+  Rewriting:
+    L, L'; R0' # {r -> linear} # Rs; !X |- tuple(l, r (d, l -> s)): linear tuple(ordinary ref(S), linear region)
+    L, L'; R0 # Rs; X |- tuple(l, r (d, l -> s)): linear tuple(ordinary ref(S), linear region)
+    L, L'; R0 # R1 # ... # Rn; X |- tuple(l, r (d, l -> s)): linear tuple(ordinary ref(S), linear region)
+    L, L'; R; X |- tuple(l, r (d, l -> s)): linear tuple(ordinary ref(S), linear region)
+  Let R' = R
+  We satisfy:
+    any r in domain(R') - domain(R) was chosen as a fresh region name during e --> e' and R'(r) = linear
+    any r in domain(R) - domain(R') is such that R(r) = linear
+    for any l in domain(L'), l was chosen as a fresh location during e --> e' and RegionOfLoc(l) = r and r -> linear in R
+
+CASE read(l.i) @ r (d, l -> S(v1 ... vn)) -> vi
+  By typing rule for read:
+    C = C0 # Cl
+    StructType(S) = (u1 t1, ..., ui ti, ..., un tn)
+    C0 |- r (d, l -> S(v1 ... vn)): shared region
+    Cl |- l: ordinary ref(S)
+    ------------------------------------------------------------------------
+    C0 # Cl |- read(l.i) @ r (d, l -> S(v1 ... vn)): share_as(shared, ui) ti
+  By Lemma: Value nonlinear, C0 = !C0 and Cl = !Cl, so C = !C
+  By typing rule for r (d, l -> S(v1 ... vn)):
+    C0 = L; R0; X0
+    R0 = R0' # {r -> shared}
+    X0 = !X0
+    domain(d, l -> S(v1 ... vn)) = {l' in domain(L) | RegionOfLoc(l') = r}
+    L; R0' |- d, l -> S(v1 ... vn): shared
+    -----------------------------------------------------------------------
+    L; R0' # {r -> shared}; !X0 |- r d, l -> S(v1 ... vn): shared region
+  By typing rule for d, l -> S(v1 ... vn):
+    R0' = ... # Rj' # ...
+    ...
+    L; Rj'; {} |- s: L(l) containing shared
+    ...
+  By typing rule for s:
+    Rj' = ... # Ri # ...
+    ...
+    L; Ri; {} |- vi: share_as(shared, ui) ti
+    ...
+  By Lemma: Weakening: (since C = !C):
+    C |- vi: share_as(shared, ui) ti
+
+CASE write(l.i := vi') @ r (d, l -> S(v1 ... vi ... vn)) -> r (d, l -> S(v1 ... vi' ... vn))
+  Let s = S(v1 ... vi ... vn)
+  Let s' = S(v1 ... vi' ... vn)
+  By typing rule for write:
+    C = Cr # Cl # Cv
+    StructType(S) = (u1 t1, ..., ordinary ti, ..., un tn)
+    Cr |- r (d, l -> s): linear region
+    Cl |- l: ordinary ref(S)
+    Cv |- vi': ordinary ti
+    ----------------------------------------------------------------
+    Cr # Cl # Cv |- write(l.i := vi') @ r (d, l -> s): linear region
+  By typing rule for r (d, l -> s):
+    Cr = L; Rr; Xr
+    Rr = Rr' # {r -> linear}
+    Xr = !Xr
+    domain(d, l -> s) = {l' in domain(L) | RegionOfLoc(l') = r}
+    L; Rr' |- d, l -> s: linear
+    -----------------------------------------------------------
+    L; Rr' # {r -> linear}; !Xr |- r (d, l -> s): linear region
+  By typing rule for d, l -> s:
+    Rr' = R1' # ... # Rm'
+    L; R1'; {} |- s1: L(l1) containing linear
+    ...
+    L; Rj'; {} |- s: S containing linear
+    ...
+    L; Rm'; {} |- sn: L(ln) containing linear
+    --------------------------------------------------------------
+    L; R1' # ... # Rm' |- l1 -> s1 ... l -> s ... lm -> sm: linear
+  By typing rule for s:
+    L; Rj'; {} = C1 # ... # Cn
+    C1 |- v1: share_as(linear, u1) t1
+    ...
+    Ci |- vi: share_as(linear, ordinary) ti
+    ...
+    Cn |- vn: share_as(linear, un) tn
+    ---------------------------------------
+    C1 # ... # Cn |- s: S containing linear
+  From above:
+    Cv |- vi': ordinary ti
+  By Lemma: Value strengthening:
+    Cv = L; Rv; Xv
+    Cv' = L; Rv; {}
+    Cv' |- vi': ordinary ti
+  Let Ci = L; Ri; {}
+  By Lemma: Value nonlinear, Ci = !Ci and Cv' = !Cv'
+  Since R = ... # !Ri # ... # !Rv # ..., we have !Ri = !Rv, so Ri = Rv, so Ci = Cv'
+  Rewriting:
+    Ci |- vi': ordinary ti
+    Ci |- vi': share_as(linear, ordinary) ti
+  By typing rule for s':
+    L; Rj'; {} = C1 # ... # Cn
+    C1 |- v1: share_as(linear, u1) t1
+    ...
+    Ci |- vi': share_as(linear, ordinary) ti
+    ...
+    Cn |- vn: share_as(linear, un) tn
+    ----------------------------------------
+    C1 # ... # Cn |- s': S containing linear
+  By typing rule for d, l -> s:
+    L; R1' # ... # Rm' |- l1 -> s1 ... l -> s' ... lm -> sm: linear
+  By typing rule for r (d, l -> s):
+    L; Rr' # {r -> linear}; !Xr |- r (d, l -> s'): linear region
+    L; Rr; !Xr |- r (d, l -> s'): linear region
+  By Lemma: Value nonlinear, Cl = !Cl and Cv = !Cv, so C = Cr # !Cl # !Cv = Cr, so:
+    C |- r (d, l -> s'): linear region
+
+CASE swap(l.i := vi') @ r (d, l -> S(v1 ... vi ... vn)) -> tuple(vi, r (d, l -> S(v1 ... vi' ... vn)))
+  Let s = S(v1 ... vi ... vn)
+  Let s' = S(v1 ... vi' ... vn)
+  By typing rule for swap:
+    C = Cr # Cl # Cv
+    StructType(S) = (u1 t1, ..., linear ti, ..., un tn)
+    Cr |- r (d, l -> s): linear region
+    Cl |- l: ordinary ref(S)
+    Cv |- vi': linear ti
+    ------------------------------------------------------------------------------------------
+    Cr # Cl # Cv |- swap(l.i := vi') @ (r (d, l -> s)): linear tuple(linear ti, linear region)
+  By typing rule for r (d, l -> s):
+    Cr = L; Rr; Xr
+    Rr = Rr' # {r -> linear}
+    Xr = !Xr = !X
+    domain(d, l -> s) = {l' in domain(L) | RegionOfLoc(l') = r}
+    L; Rr' |- d, l -> s: linear
+    -----------------------------------------------------------
+    L; Rr' # {r -> linear}; !X |- r (d, l -> s): linear region
+  By typing rule for d, l -> s:
+    Rr' = R1' # ... # Rm'
+    L; R1'; {} |- s1: L(l1) containing linear
+    ...
+    L; Rj'; {} |- s: S containing linear
+    ...
+    L; Rm'; {} |- sn: L(ln) containing linear
+    --------------------------------------------------------------
+    L; R1' # ... # Rm' |- l1 -> s1 ... l -> s ... lm -> sm: linear
+  By typing rule for s:
+    L; Rj'; {} = C1 # ... # Cn
+    C1 |- v1: share_as(linear, u1) t1
+    ...
+    Ci |- vi: share_as(linear, linear) ti
+    ...
+    Cn |- vn: share_as(linear, un) tn
+    ---------------------------------------
+    C1 # ... # Cn |- s: S containing linear
+  From above:
+    Cv |- vi': linear ti
+  By Lemma: Value strengthening:
+    Cv = L; Rv; Xv
+    Cv' = L; Rv; {}
+    Cv' |- vi': linear ti
+    and Xv = !Xv
+  By Lemma: Value nonlinear, Cl = !Cl
+  Since C = Cr # Cl # Cv and Xv = !Xv and Xr = !Xr and Cl = !Cl, we know X = !X
+  By typing rule for s':
+    L; Rj'; {} = C1 # ... # Cn
+    C1 |- v1: share_as(linear, u1) t1
+    ...
+    Cv' |- vi': share_as(linear, linear) ti
+    ...
+    Cn |- vn: share_as(linear, un) tn
+    ----------------------------------------------------
+    C1 # ... # Cv' # ... # Cn |- s': S containing linear
+  Let C1 = L; R1; {} and ... and Cn = L; Rn; {}
+  By typing rule for d, l -> s':
+    L; R1' # ... # (R1 # ... # Rv # ... # Rn) # ... # Rm' |- l1 -> s1 ... l -> s' ... lm -> sm: linear
+  By typing rule for r (d, l -> s'):
+    L; R1' # ... # (R1 # ... # Rv # ... # Rn) # ... # Rm' # {r -> linear}; !X |- r (d, l -> s'): linear region
+  From above:
+    Ci |- vi: share_as(linear, linear) ti
+    L; Ri; {} |- vi: linear ti
+  By weakening:
+    L; Ri; !X |- vi: linear ti
+  By typing rule for tuple:
+    L; Ri; !X |- vi: linear ti
+    L; R1' # ... # (R1 # ... # Rv # ... # Rn) # ... # Rm' # {r -> linear}; !X |- r (d, l -> s'): linear region
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    L; Ri # R1' # ... # (R1 # ... # Rv # ... # Rn) # ... # Rm' # {r -> linear}; !X |- tuple(vi, r (d, l -> s')): tuple(linear ti, linear region)
+  Rewriting:
+    L; Rv # R1' # ... # (R1 # ... # Ri # ... # Rn) # ... # Rm' # {r -> linear}; !X |- tuple(vi, r (d, l -> s')): tuple(linear ti, linear region)
+    L; Rv # R1' # ... # Rj' # ... # Rm' # {r -> linear}; !X |- tuple(vi, r (d, l -> s')): tuple(linear ti, linear region)
+    L; Rv # Rr' # {r -> linear}; !X |- tuple(vi, r (d, l -> s')): tuple(linear ti, linear region)
+    L; Rv # Rr; !X |- tuple(vi, r (d, l -> s')): tuple(linear ti, linear region)
+    L; R; X |- tuple(vi, r (d, l -> s')): tuple(linear ti, linear region)
+
+
+CONGRUENCE CASES
+
+CASE e1 + e2 --> e1' + e2
+  L; R1; X1 |- e1: ordinary int
+  L; R2; X2 |- e2: ordinary int
+  by induction:
+    there is some L', R1'
+    such that L, L'; R1'; X1 |- e1': ordinary int
+    and any r in domain(R1') - domain(R1) was chosen as a fresh region name during e1 --> e1' and R1'(r) = linear
+    and any r in domain(R1) - domain(R1') is such that R1(r) = linear
+    and for any l in domain(L'), l was chosen as a fresh location during e1 --> e1' and RegionOfLoc(l) = r and r -> linear in R1
+  Since any new r in domain(R1') is fresh, domain(~R1') is disjoint from domain(~R2)
+  by Lemma: Region extension: L, L'; R2; X2 |- e2: ordinary int
+  by typing rule for e1' + e2: L, L'; R1' # R2; X1 # X2 |- e1' + e2: ordinary int
+
+CASE e1; e2 --> e1'; e2
+  (L; R1; X1), shared(Cb) |- e1: u1 t1
+  (L; R2; X2), linear(Cb) |- e2: u2 t2
+  by induction:
+    there is some L', R1'
+    such that (L, L'; R1'; X1), shared(Cb) |- e1': ordinary int (see note below about the ", shared(Cb)" here)
+    and any r in domain(R1') - domain(R1) was chosen as a fresh region name during e1 --> e1' and R1'(r) = linear
+    and any r in domain(R1) - domain(R1') is such that R1(r) = linear
+    and for any l in domain(L'), l was chosen as a fresh location during e1 --> e1' and RegionOfLoc(l) = r and r -> linear in R1
+    (note: the fact that in the induction, R and R' differ only in linear mappings is why we can keep the ", shared(Cb)" unchanged across the inductive step)
+  Since any new r in domain(R1') is fresh, domain(~R1') is disjoint from domain(~R2) and from linear(Cb)
+  by Lemma: Region extension: (L, L'; R2; X2), linear(Cb) |- e2: ordinary int
+  by typing rule for e1'; e2: (L, L'; R1' # R2; X1 # X2), linear(Cb) |- e1; e2: u2 t2
+
+Other congruence cases are similar.
+
+=====================================================================
+Lemma: Substitution
+
+If C1 |- v1: u1 t1
+...
+If Cn |- vn: un tn
+and C0, x1 -> u1 t1, ..., xn -> un tn |- e0: u0 t0
+and C = C0 # C1 # ... # Cn
+Then C |- e0[x1 := v1 ... xn := vn]: u0 t0
+
+By induction on n, repeatedly using Lemma: Single substitution.
+Base case n = 0 trivial
+Induction case:
+  C0, x1 -> u1 t1, ..., xn -> un tn |- e0: u0 t0
+  (C0, x1 -> u1 t1), x2 -> u2 t2, ..., xn -> un tn |- e0: u0 t0
+  If u1 = linear:
+    By induction:
+      (C0, x1 -> u1 t1) # C2 # ... Cn |- e0[x2 := v2 ... xn := vn]: u0 t0
+      (C0 # C2 # ... Cn), x1 -> u1 t1 |- e0[x2 := v2 ... xn := vn]: u0 t0
+  If u1 != linear:
+    By Lemma: Weakening:
+      C2, x1 -> u1 t1 |- v2: u2 t2
+      ...
+      Cn, x1 -> u1 t1 |- vn: un tn
+    By induction:
+      (C0, x1 -> u1 t1) # (C2, x1 -> u1 t1) # ... (Cn, x1 -> u1 t1) |- e0[x2 := v2 ... xn := vn]: u0 t0
+      (C0 # C2 # ... Cn), x1 -> u1 t1 |- e0[x2 := v2 ... xn := vn]: u0 t0
+  In either u1 = linear or u1 != linear:
+    C1 |- v1: u1 t1
+    (C0 # C2 # ... Cn), x1 -> u1 t1 |- e0[x2 := v2 ... xn := vn]: u0 t0
+    C = C0 # C1 # ... # Cn = (C0 # C2 # ... Cn) # C1
+  By Lemma: Single substitution:
+    C |- e0[x2 := v2 ... xn := vn][x1 := v1]: u0 t0
+  Simplifying, since values have no free variables and x1...xn are distinct:
+    C |- e0[x1 := v1 ... xn := vn]: u0 t0
+
+=====================================================================
+Lemma: Single substitution
+
+If Cv |- v: ux tx
+and Ce, x -> ux tx |- e: ue te
+and C = Ce # Cv
+Then C |- e[x := v]: ue te
+
+By induction on Ce, x -> ux tx |- e: ue te
+
+CASE e = i
+  By typing rule:
+    ux != linear
+    !Ce, x -> ux tx |- i: ordinary int
+  By Lemma: Value nonlinear, Cv = !Cv
+  So C = !C = !(Ce # Cv)
+  By typing rule:
+    !C |- i: ordinary int
+
+CASE e = x
+  By typing rule:
+    Ce = !Ce
+    ue = ux
+    te = tx
+    !Ce, x -> ux tx |- x: ux tx
+  Since Ce = !Ce we know C = Ce # Cv = !Ce # Cv = Cv
+  Rewriting v's typing:
+    Cv |- v: ux tx
+    C |- v: ue te
+    C |- e[x := v]: ue te
+
+CASE e = r d
+  By typing rule for r d:
+    ux != linear
+    Ce, x -> ux tx = L; R # {r -> u}; !X
+    domain(d) = {l in domain(L) | RegionOfLoc(l) = r}
+    L; R |- d: u
+    -------------------------------------------------
+    L; R # {r -> u}; !X |- r d: u region
+  By typing rule for d:
+    R = R1 # ... # Rm
+    L; R1; {} |- s1: L(l1) containing u
+    ...
+    L; Rm; {} |- sm: L(lm) containing u
+    --------------------------------------------
+    L; R1 # ... # Rm |- l1 -> s1 ... lm -> sm: u
+  By typing rule for each sj = S(v1 ... vn) in s1 ... sn:
+    C1 |- v1: share_as(u, u1) t1
+    ...
+    Cn |- vn: share_as(u, un) tn
+    ---------------------------------------------
+    C1 # ... # Cn |- S(v1 ... vn): S containing u
+  By Lemma: Not free, v1[x := v] = v1 and ... and vn[x := v] = vn
+  So d[x := v] = d
+  Let !X = !X', x -> ux tx
+  By typing rule for r d (which allows any !X we want, so we can use !X'):
+    domain(d) = {l in domain(L) | RegionOfLoc(l) = r}
+    L; R |- d[x := v]: u
+    -------------------------------------------------
+    L; R # {r -> u}; !X' |- (r d)[x := v]: u region
+  Rearranging:
+    L; R # {r -> u}; !X' |- (r d)[x := v]: u region
+    Ce |- (r d)[x := v]: u region
+  By Lemma: Value nonlinear, Cv = !Cv
+  Since C = Ce # Cv and Cv = !Cv we know C = Ce # Cv = Ce # !Cv = Ce:
+    Ce # Cv |- (r d)[x := v]: u region
+
+CASE e = e1 + e2
+  By typing rule:
+    Ce, x -> ux tx = C1 # C2
+    C1 |- e1: ordinary int
+    C2 |- e2: ordinary int
+    --------------------------------
+    C1 # C2 |- e1 + e2: ordinary int
+  If ux = linear and x -> ux tx in C1:
+    Let C1 = C1', x -> ux tx, so:
+      C1', x -> ux tx |- e1: ordinary int
+    By induction:
+      C1' # Cv |- e1[x := v]: ordinary int
+    By Lemma: Not free on e2:
+      C2 |- e2[x := v]: ordinary int
+    By typing rule:
+      (C1' # Cv) # C2 |- e1[x := v] + e2[x := v]: ordinary int
+    Rearranging:
+      (C1' # C2) # Cv |- e1[x := v] + e2[x := v]: ordinary int
+      Ce # Cv |- (e1 + e2)[x := v]: ordinary int
+  If ux = linear and x -> ux tx in C2:
+    Similar to C1 case
+  If ux != linear:
+    By Lemma: Value nonlinear, Cv = !Cv
+    Let C1 = C1', x -> ux tx
+    Let C2 = C2', x -> ux tx
+    By induction:
+      C1' # Cv |- e1[x := v]: ordinary int
+      C2' # Cv |- e2[x := v]: ordinary int
+    By Lemma: Value nonlinear, Cv = !Cv, so:
+      C1' # !Cv |- e1[x := v]: ordinary int
+      C2' # !Cv |- e2[x := v]: ordinary int
+    By typing rule:
+      (C1' # !Cv) # (C2' # !Cv) |- e1[x := v] + e2[x := v]: ordinary int
+    Rearranging:
+      (C1' # C2') # !Cv |- e1[x := v] + e2[x := v]: ordinary int
+      Ce # Cv |- (e1 + e2)[x := v]: ordinary int
+
+CASE e = e1; e2
+  By typing rule:
+    Ce, x -> ux tx = (C1 # C2), linear(Cb)
+    u1 != linear
+    C1, shared(Cb) |- e1: u1 t1
+    C2, linear(Cb) |- e2: u2 t2
+    --------------------------------------
+    (C1 # C2), linear(Cb) |- e1; e2: u2 t2
+  If x -> ux tx in C1 # C2:
+    If ux = linear and x -> ux tx in C1:
+      Let C1 = C1', x -> ux tx
+      Ce = (C1' # C2), linear(Cb)
+      Rearranging:
+        (C1', x -> ux tx), shared(Cb) |- e1: u1 t1
+        (C1', shared(Cb)), x -> ux tx |- e1: u1 t1
+      By induction:
+        (C1', shared(Cb)) # Cv |- e1[x := v]: u1 t1
+      Rearranging:
+        (C1' # Cv), shared(Cb) |- e1[x := v]: u1 t1
+      By Lemma: Not free on e2:
+        C2, linear(Cb) |- e2[x := v]: u2 t2
+      By typing rule:
+        (C1' # Cv), shared(Cb) |- e1[x := v]: u1 t1
+        C2, linear(Cb) |- e2[x := v]: u2 t2
+        --------------------------------------------------------
+        ((C1' # Cv) # C2), linear(Cb) |- (e1; e2)[x := v]: u2 t2
+      Rearranging:
+        ((C1' # C2), linear(Cb)) # Cv |- (e1; e2)[x := v]: u2 t2
+        Ce # Cv |- (e1; e2)[x := v]: u2 t2
+        C |- e[x := v]: ue te
+    If ux = linear and x -> ux tx in C2:
+      Let C2 = C2', x -> ux tx
+      Ce = (C1 # C2'), linear(Cb)
+      Rearranging:
+        (C2', x -> ux tx), linear(Cb) |- e2: u2 t2
+        (C2', linear(Cb)), x -> ux tx |- e2: u2 t2
+      By induction:
+        (C2', linear(Cb)) # Cv |- e2[x := v]: u2 t2
+      Rearranging:
+        (C2' # Cv), linear(Cb) |- e2[x := v]: u2 t2
+      By Lemma: Not free on e1:
+        C1, shared(Cb) |- e1[x := v]: u1 t1
+      By typing rule:
+        C1, shared(Cb) |- e1[x := v]: u1 t1
+        (C2' # Cv), linear(Cb) |- e2[x := v]: u2 t2
+        --------------------------------------------------------
+        (C1 # (C2' # Cv)), linear(Cb) |- (e1; e2)[x := v]: u2 t2
+      Rearranging:
+        ((C1 # C2'), linear(Cb)) # Cv |- (e1; e2)[x := v]: u2 t2
+        Ce # Cv |- (e1; e2)[x := v]: u2 t2
+        C |- e[x := v]: ue te
+    If ux != linear:
+      Let C1 = C1', x -> ux tx
+      Let C2 = C2', x -> ux tx
+      Ce = (C1' # C2'), linear(Cb)
+      Rearranging:
+        (C1', shared(Cb)), x -> ux tx |- e1: u1 t1
+        (C2', linear(Cb)), x -> ux tx |- e2: u2 t2
+      By induction on e1 and on e2:
+        (C1', shared(Cb)) # Cv |- e1[x := v]: u1 t1
+        (C2', linear(Cb)) # Cv |- e2[x := v]: u2 t2
+      Rearranging:
+        (C1' # Cv), shared(Cb) |- e1[x := v]: u1 t1
+        (C2' # Cv), linear(Cb) |- e2[x := v]: u2 t2
+      By Lemma: Value nonlinear, Cv = !Cv
+      By typing rule:
+        (C1' # Cv), shared(Cb) |- e1[x := v]: u1 t1
+        (C2' # Cv), linear(Cb) |- e2[x := v]: u2 t2
+        ----------------------------------------------------------------
+        ((C1' # Cv) # (C2' # Cv)), linear(Cb) |- (e1; e2)[x := v]: u2 t2
+      Rearranging:
+        ((C1' # C2'), linear(Cb)) # Cv |- (e1; e2)[x := v]: u2 t2
+        Ce # Cv |- (e1; e2)[x := v]: u2 t2
+        C |- e[x := v]: ue te
+  If x -> ux tx in linear(Cb):
+    Must have ux = linear
+    Let Cb = Cb', x -> linear tx
+    Ce = (C1 # C2), linear(Cb')
+    Rearranging (note that shared(Cb) creates x -> shared tx):
+      (C1, shared(Cb')), x -> shared tx |- e1: u1 t1
+      (C2, linear(Cb')), x -> linear tx |- e2: u2 t2
+    Rewriting v's typing with ux = linear:
+      Cv |- v: linear tx
+    By Lemma: Value sharing:
+      !Cv, shared(~Cv) |- v: shared tx
+    By Lemma: Weakening:
+      !Cv, shared(~Cv), shared(Cb') |- v: shared tx
+    By Lemma: Weakening on e1's typing:
+      (C1, shared(~Cv), shared(Cb')), x -> shared tx |- e1: u1 t1
+    By induction on e1:
+      (C1, shared(~Cv), shared(Cb')) # (!Cv, shared(~Cv), shared(Cb')) |- e1[x := v]: u1 t1
+      (C1 # !Cv), shared(Cb', ~Cv) |- e1[x := v]: u1 t1
+    By induction on e2:
+      (C2, linear(Cb')) # Cv |- e2[x := v]: u2 t2
+      ((C2, linear(Cb')) # !Cv), linear(~Cv) |- e2[x := v]: u2 t2
+      (C2 # !Cv), linear(Cb', ~Cv) |- e2[x := v]: u2 t2
+    By typing rule:
+      (C1 # !Cv), shared(Cb', ~Cv) |- e1[x := v]: u1 t1
+      (C2 # !Cv), linear(Cb', ~Cv) |- e2[x := v]: u2 t2
+      ----------------------------------------------------------------------
+      ((C1 # !Cv) # (C2 # !Cv)), linear(Cb', ~Cv) |- (e1; e2)[x := v]: u2 t2
+    Rearranging:
+      ((C1 # C2) # !Cv), linear(Cb'), ~Cv |- (e1; e2)[x := v]: u2 t2
+      (((C1 # C2), linear(Cb') # !Cv), ~Cv |- (e1; e2)[x := v]: u2 t2
+      ((C1 # C2), linear(Cb')) # Cv |- (e1; e2)[x := v]: u2 t2
+      Ce # Cv |- (e1; e2)[x := v]: u2 t2
+      C |- e[x := v]: ue te
+
+CASE e = let u x' = e1 in e2
+  Alpha-rename so that x' != x
+  By typing rule:
+    Ce, x -> ux tx = (C1 # C2), linear(Cb)
+    If u1 = shared then Cb = {}; {}; {}
+    C1, shared(Cb)              |- e1: u1 t1
+    C2, linear(Cb), x' -> u1 t1 |- e2: u2 t2
+    ----------------------------------------------------
+    (C1 # C2), linear(Cb) |- let u1 x' = e1 in e2: u2 t2
+  If x -> ux tx in C1 # C2:
+    If ux = linear and x -> ux tx in C1:
+      Let C1 = C1', x -> ux tx
+      Ce = (C1' # C2), linear(Cb)
+      Rearranging:
+        (C1', x -> ux tx), shared(Cb) |- e1: u1 t1
+        (C1', shared(Cb)), x -> ux tx |- e1: u1 t1
+      By induction:
+        (C1', shared(Cb)) # Cv |- e1[x := v]: u1 t1
+      Rearranging:
+        (C1' # Cv), shared(Cb) |- e1[x := v]: u1 t1
+      By Lemma: Not free on e2:
+        C2, linear(Cb), x' -> u1 t1 |- e2[x := v]: u2 t2
+      By typing rule:
+        If u1 = shared then Cb = {}; {}; {}
+        (C1' # Cv), shared(Cb) |- e1[x := v]: u1 t1
+        C2, linear(Cb), x' -> u1 t1 |- e2[x := v]: u2 t2
+        --------------------------------------------------------
+        ((C1' # Cv) # C2), linear(Cb) |- (e1; e2)[x := v]: u2 t2
+      Rearranging:
+        ((C1' # C2), linear(Cb)) # Cv |- (e1; e2)[x := v]: u2 t2
+        Ce # Cv |- (e1; e2)[x := v]: u2 t2
+        C |- e[x := v]: ue te
+    If ux = linear and x -> ux tx in C2:
+      Let C2 = C2', x -> ux tx
+      Ce = (C1 # C2'), linear(Cb)
+      Rearranging:
+        (C2', x -> ux tx), linear(Cb), x' -> u1 t1 |- e2: u2 t2
+        (C2', linear(Cb), x' -> u1 t1), x -> ux tx |- e2: u2 t2
+      By induction:
+        (C2', linear(Cb), x' -> u1 t1) # Cv |- e2[x := v]: u2 t2
+      Rearranging:
+        (C2' # Cv), linear(Cb), x' -> u1 t1 |- e2[x := v]: u2 t2
+      By Lemma: Not free on e1:
+        C1, shared(Cb) |- e1[x := v]: u1 t1
+      By typing rule:
+        If u1 = shared then Cb = {}; {}; {}
+        C1, shared(Cb) |- e1[x := v]: u1 t1
+        (C2' # Cv), linear(Cb), x' -> u1 t1 |- e2[x := v]: u2 t2
+        --------------------------------------------------------
+        (C1 # (C2' # Cv)), linear(Cb) |- (e1; e2)[x := v]: u2 t2
+      Rearranging:
+        ((C1 # C2'), linear(Cb)) # Cv |- (e1; e2)[x := v]: u2 t2
+        Ce # Cv |- (e1; e2)[x := v]: u2 t2
+        C |- e[x := v]: ue te
+    If ux != linear:
+      Let C1 = C1', x -> ux tx
+      Let C2 = C2', x -> ux tx
+      Ce = (C1' # C2'), linear(Cb)
+      Rearranging:
+        (C1', shared(Cb)), x -> ux tx |- e1: u1 t1
+        (C2', linear(Cb), x' -> u1 t1), x -> ux tx |- e2: u2 t2
+      By induction on e1 and on e2:
+        (C1', shared(Cb)) # Cv |- e1[x := v]: u1 t1
+        (C2', linear(Cb), x' -> u1 t1) # Cv |- e2[x := v]: u2 t2
+      Rearranging:
+        (C1' # Cv), shared(Cb) |- e1[x := v]: u1 t1
+        (C2' # Cv), linear(Cb), x' -> u1 t1 |- e2[x := v]: u2 t2
+      By Lemma: Value nonlinear, Cv = !Cv
+      By typing rule:
+        If u1 = shared then Cb = {}; {}; {}
+        (C1' # Cv), shared(Cb) |- e1[x := v]: u1 t1
+        (C2' # Cv), linear(Cb), x' -> u1 t1 |- e2[x := v]: u2 t2
+        ----------------------------------------------------------------
+        ((C1' # Cv) # (C2' # Cv)), linear(Cb) |- (e1; e2)[x := v]: u2 t2
+      Rearranging:
+        ((C1' # C2'), linear(Cb)) # Cv |- (e1; e2)[x := v]: u2 t2
+        Ce # Cv |- (e1; e2)[x := v]: u2 t2
+        C |- e[x := v]: ue te
+  If x -> ux tx in linear(Cb):
+    Must have ux = linear
+    Let Cb = Cb', x -> linear tx
+    Ce = (C1 # C2), linear(Cb')
+    Rearranging (note that shared(Cb) creates x -> shared tx):
+      (C1, shared(Cb')), x -> shared tx |- e1: u1 t1
+      (C2, linear(Cb'), x' -> u1 t1), x -> linear tx |- e2: u2 t2
+    Rewriting v's typing with ux = linear:
+      Cv |- v: linear tx
+    By Lemma: Value sharing:
+      !Cv, shared(~Cv) |- v: shared tx
+    By Lemma: Weakening:
+      !Cv, shared(~Cv), shared(Cb') |- v: shared tx
+    By Lemma: Weakening on e1's typing:
+      (C1, shared(~Cv), shared(Cb')), x -> shared tx |- e1: u1 t1
+    By induction on e1:
+      (C1, shared(~Cv), shared(Cb')) # (!Cv, shared(~Cv), shared(Cb')) |- e1[x := v]: u1 t1
+      (C1 # !Cv), shared(Cb', ~Cv) |- e1[x := v]: u1 t1
+    By induction on e2:
+      (C2, linear(Cb'), x' -> u1 t1) # Cv |- e2[x := v]: u2 t2
+      ((C2, linear(Cb'), x' -> u1 t1) # !Cv), linear(~Cv) |- e2[x := v]: u2 t2
+      (C2 # !Cv), linear(Cb', ~Cv), x' -> u1 t1 |- e2[x := v]: u2 t2
+    If u1 = shared then Cb = {} and we can't be in this case, so u1 != shared
+    By typing rule:
+      If u1 = shared then Cb, ~Cv = {}; {}; {}
+      (C1 # !Cv), shared(Cb', ~Cv) |- e1[x := v]: u1 t1
+      (C2 # !Cv), linear(Cb', ~Cv), x' -> u1 t1 |- e2[x := v]: u2 t2
+      ----------------------------------------------------------------------
+      ((C1 # !Cv) # (C2 # !Cv)), linear(Cb', ~Cv) |- (e1; e2)[x := v]: u2 t2
+    Rearranging:
+      ((C1 # C2) # !Cv), linear(Cb'), ~Cv |- (e1; e2)[x := v]: u2 t2
+      (((C1 # C2), linear(Cb') # !Cv), ~Cv |- (e1; e2)[x := v]: u2 t2
+      ((C1 # C2), linear(Cb')) # Cv |- (e1; e2)[x := v]: u2 t2
+      Ce # Cv |- (e1; e2)[x := v]: u2 t2
+      C |- e[x := v]: ue te
+
+CASE e = e.i
+  By typing rule:
+    Ce, x -> ux tx |- e: shared tuple(u1 t1 ... ui ti ... un tn)
+    ------------------------------------------------------------
+    Ce, x -> ux tx |- e.i: share_as(shared, ui) ti
+  By induction:
+    Ce # Cv |- e[x := v]: shared tuple(u1 t1 ... ui ti ... un tn)
+  By typing rule:
+    Ce # Cv |- e[x := v].i: share_as(shared, ui) ti
+    Ce # Cv |- (e.i)[x := v]: share_as(shared, ui) ti
+
+CASE e = free_region(e)
+  By typing rule:
+    Ce, x -> ux tx |- e: linear region
+    ----------------------------------------------
+    Ce, x -> ux tx |- free_region(e): ordinary int
+  By induction:
+    Ce # Cv |- e[x := v]: linear region
+  By typing rule:
+    Ce # Cv |- free_region(e[x := v]): ordinary int
+    Ce # Cv |- free_region(e)[x := v]: ordinary int
+
+Other cases are similar.
+
+=====================================================================
+Lemma: Value sharing
+
+If C |- v: u t
+Then !C, shared(~C) |- v: share_as(share, u) t
+
+Induction on C |- v: u t
+
+CASE v = i | l | null
+  By typing rules, C = !C and u = ordinary
+  Therefore, !C, shared(~C) = C and share_as(share, u) = u
+  So !C, shared(~C) |- v: share_as(share, u) t
+
+CASE v = tuple(v1 ... vn)
+  By typing rule, where C = C1 # ... # Cn:
+    C1 |- v1: share_as(uLS, u1) t1
+    ...
+    Cn |- vn: share_as(uLS, un) tn
+    -------------------------------------------------
+    C |- tuple(v1 ... vn): uLS tuple(u1 t1 ... un tn)
+  For each uk:
+    By induction:
+      !Ck, shared(~Ck) |- vk: share_as(share, share_as(uLS, uk)) tk
+    Simplifying:
+      !Ck, shared(~Ck) |- vk: share_as(share, uk) tk
+    By Lemma: Weakening:
+      !C, shared(~C) |- vk: share_as(share, uk) tk
+  Let Ck' = !Ck, shared(~Ck)
+  By typing rule:
+    !C, shared(~C) |- v1: share_as(shared, u1) t1
+    ...
+    !C, shared(~C) |- vn: share_as(shared, un) tn
+    -----------------------------------------------------------------
+    !C, shared(~C) |- tuple(v1 ... vn): shared tuple(u1 t1 ... un tn)
+
+CASE v = r d
+  By typing rule, where u = uLS and C = L; R # {r -> uLS}; !X:
+    domain(d) = {l in domain(L) | RegionOfLoc(l) = r}
+    L; R |- d: uLS
+    -------------------------------------------------
+    L; R # {r -> uLS}; !X |- r d: uLS region
+  Let R' = R # {r -> uLS}
+  By typing rule for d, for each l -> s in d:
+    L; Rj; {} |- s: L(l) containing uLS
+    where R1 # ... # Rn = R
+    By typing rule for s, for each uk tk in StructType(S):
+      Ck |- vk: share_as(uLS, uk) tk
+      where C1 # ... # Cm = L; Rj; {}
+      By induction:
+        !Ck, shared(~Ck) |- vk: share_as(share, share_as(uLS, uk)) tk
+      Simplifying:
+        !Ck, shared(~Ck) |- vk: share_as(share, uk) tk
+      By Lemma: Weakening:
+        L; !R', shared(~R') |- vk: share_as(share, uk) tk
+    By typing rule for s:
+      L; !R', shared(~R'); {} |- s: L(l) containing shared
+  By typing rule for d:
+    L; !R', shared(~R') |- d: shared
+  By typing rule for r d:
+    domain(d) = {l in domain(L) | RegionOfLoc(l) = r}
+    L; !R', shared(~R') |- d: shared
+    --------------------------------------------------------
+    L; !R', shared(~R'); !X |- r d: shared region
+
+=====================================================================
+Lemma: Value nonsharing
+
+If C, shared(Cb) |- v: u t
+and u != shared
+Then C |- v: u t
+
+Induction on C |- v: u t
+
+CASE i
+  By typing rule:
+    !C, shared(Cb) |- i: ordinary int
+  By typing rule:
+    !C |- i: ordinary int
+
+CASE l
+  By typing rule:
+    !C, shared(Cb), l -> S |- l: ordinary ref(S)
+  By typing rule:
+    !C, l -> S |- l: ordinary ref(S)
+
+CASE null
+  By typing rule:
+    !C, shared(Cb) |- null: ordinary ref(S)
+  By typing rule:
+    !C |- null: ordinary ref(S)
+
+CASE r d
+  By typing rule:
+    u != ordinary, so u = linear
+    (C, shared(Cb)) = (L; R # {r -> linear}; !X)
+    domain(d) = {l in domain(L) | RegionOfLoc(l) = r}
+    L; R |- d: linear
+  Let shared(Cb) = {}; shared(Rb); shared(Xb)
+  Let !X = !X', shared(Xb)
+  Let R = R', shared(Rb)
+  By typing rule for L; R |- d: linear, for each l -> s in d:
+    L; Rj; {} |- s: L(l) containing linear
+    where R1 # ... # Rn = R
+    Let R1 = R1', shared(Rb) ... Rn = Rn', shared(Rb)
+    By typing rule for s, for each uk tk in StructType(S):
+      Ck |- vk: share_as(linear, uk) tk
+      where C1 # ... # Cm = (L; Rj', shared(Rb); {})
+      and by definition of StructType(S) = (uLO_1 t1, ..., uLO_m tm), uk != shared
+      Simplifying:
+        Ck |- vk: uk tk
+      Let Ck = Ck', shared(Rb)
+      By induction:
+        !Ck' |- vk: uk tk
+    By typing rule for s:
+      C1' # ... # Cm' = (L; Rj'; {})
+      L; Rj'; {} |- s: L(l) containing linear
+  By typing rule for d:
+    L; R' |- d: linear
+  C = L; R' # {r -> linear}; !X'
+  By typing rule for r d:
+    C |- r d: linear region
+
+CASE tuple(v1 ... vn)
+  By typing rule:
+    u != ordinary, so u = linear
+    C, shared(Cb) = C1 # ... # Cn
+    C1 |- e1: share_as(linear, u1) t1
+    ...
+    Cn |- en: share_as(linear, un) tn
+  Let C1 = C1', shared(Cb) ... Cn = Cn', shared(Cb)
+  So C = C1' # ... # Cn'
+  By induction:
+    C1' |- e1: share_as(linear, u1) t1
+    ...
+    Cn' |- en: share_as(linear, un) tn
+  By typing rule:
+    C1' # ... # Cn' |- tuple(v1 ... vn): linear tuple(u1 t1 ... un tn)
+    C |- tuple(v1 ... vn): linear tuple(u1 t1 ... un tn)
+
+=====================================================================
+Lemma: Value nonlinear
+1)
+  If C |- v: u t
+  and u != linear
+  Then C = !C
+2)
+  If L; R |- d: u
+  and u != linear
+  Then R = !R
+3)
+  If C |- s: S containing u
+  and u != linear
+  Then C = !C
+
+Induction on C |- v: u t and L; R |- d: u and C |- s: S containing u,
+which requires only the rules for v
+
+CASES v = i | l | null
+  By typing rule, C = !C
+
+CASE v = r d
+  By typing rule, u = shared
+  By typing rule, X = !X
+  By induction on L; R |- d: u, R = !R
+  So C = !C
+
+CASE v = tuple(v1 ... vn)
+  By typing rule, u = shared
+  By induction on v1 ... vn, C1 = !C1 ... Cn = !Cn
+  So C = !C
+
+CASE L; R |- d: u
+  By typing rule, u = shared
+  By induction on s1 ... sn, R1 = !R1 ... Rn = !Rn
+  So R = !R
+
+CASE C |- s: S containing u
+  By typing rule, u = shared
+  By induction on v1 ... vn, C1 = !C1 ... Cn = !Cn
+  So C = !C
+
+=====================================================================
+Lemma: Value strengthening
+
+If L; R; X |- v: u t
+Then L; R; {} |- v: u t
+and X = !X
+
+Induction on L; R; X |- v: u t
+
+CASE i
+  By typing rule:
+    L; !R; !X |- i: ordinary int
+  By typing rule:
+    L; !R; {} |- i: ordinary int
+
+CASE l
+  By typing rule:
+    L, l -> S, !R, !X |- l: ordinary ref(S)
+  By typing rule:
+    L, l -> S, !R, {} |- l: ordinary ref(S)
+
+CASE null
+  By typing rule:
+    L; !R; !X |- null: ordinary ref(S)
+  By typing rule:
+    L; !R; {} |- null: ordinary ref(S)
+
+CASE r d
+  By typing rule:
+    domain(d) = {l in domain(L) | RegionOfLoc(l) = r}
+    L; R |- d: u
+    -------------------------------------------------
+    L; R # {r -> u}; !X |- r d: u region
+  By typing rule:
+    domain(d) = {l in domain(L) | RegionOfLoc(l) = r}
+    L; R |- d: u
+    -------------------------------------------------
+    L; R # {r -> u}; {} |- r d: u region
+
+CASE tuple(v1 ... vn)
+  By typing rule:
+    L; R1; X1 |- v1: share_as(u, u1) t1
+    ...
+    L; Rn; Xn |- vn: share_as(u, un) tn
+    -----------------------------------------------------------------------------
+    L; R1 # ... # Rn; X1 # ... # Xn |- tuple(v1 ... vn): u tuple(u1 t1 ... un tn)
+  By induction:
+    L; R1; {} |- v1: share_as(u, u1) t1 and X1 = !X1
+    ...
+    L; Rn; {} |- vn: share_as(u, un) tn and Xn = !Xn
+  So X = X1 # ... # Xn = !X1 # ... # !Xn = !X
+  By typing rule:
+    L; R1 # ... # Rn; {} |- tuple(v1 ... vn): u tuple(u1 t1 ... un tn)
+
+=====================================================================
+Lemma: Weakening
+
+1)
+  If Ca |- e: u t
+  and C = Ca, !Cz
+  where !Cz = {}; !Rz; !Xz
+  Then C |- e: u t
+2)
+  If L; Ra |- d: u
+  and R = Ra, !Rz
+  Then L; R |- d: u
+3)
+  If Ca |- s: S containing u
+  and C = Ca, !Cz
+  where !Cz = {}; !Rz; !Xz
+  Then C |- s: S containing u
+
+Proof by induction on Ca |- e: u t and La; Ra |- d: u and Ca |- s: S containing u
+Let Ca = La; Ra; Xa
+
+CASE i
+  By typing rule:
+    Ca = !Ca
+    !Ca |- i: ordinary int
+  By typing rule:
+    !Ca, !Cz |- i: ordinary int
+
+CASE x
+  By typing rule:
+    Ra = !Ra
+    Xa = !Xa', x -> u t
+    La; !Ra; !Xa', x -> u t |- x: u t
+  By typing rule:
+    La; !Ra, !Rz; !Xa', !Xz, x -> u t |- x: u t
+    La; !Ra, !Rz; (!Xa', x -> u t), !Xz |- x: u t
+    La; !Ra, !Rz; Xa, !Xz |- x: u t
+
+CASE e1 + e2
+  By typing rule:
+    Ca = C1 # C2
+    C1 |- e1: ordinary int
+    C2 |- e2: ordinary int
+  By induction:
+    C1, !Cz |- e1: ordinary int
+    C2, !Cz |- e2: ordinary int
+  By typing rule:
+    (C1, !Cz) # (C2, !Cz) |- e1 + e2: ordinary int
+    (C1 # C2), !Cz |- e1 + e2: ordinary int
+    Ca, !Cz |- e1 + e2: ordinary int
+
+CASE let u1 x = e1 in e2
+  (alpha-renaming so that x not in domain(!Xz))
+  By typing rule:
+    Ca = (C1 # C2), linear(Cb)
+    u = u2
+    t = t2
+    If u1 = shared then Cb = {}; {}; {}
+    C1, shared(Cb)             |- e1: u1 t1
+    C2, linear(Cb), x -> u1 t1 |- e2: u2 t2
+    ---------------------------------------------------
+    (C1 # C2), linear(Cb) |- let u1 x = e1 in e2: u2 t2
+  By induction:
+    C1, shared(Cb), !Cz             |- e1: u1 t1
+    C2, linear(Cb), x -> u1 t1, !Cz |- e2: u2 t2
+  By typing rule:
+    ((C1, !Cz) # (C2, !Cz)), linear(Cb) |- let u1 x = e1 in e2: u2 t2
+    ((C1 # C2), linear(Cb)), !Cz |- let u1 x = e1 in e2: u2 t2
+
+Other cases are similar.
+
+=====================================================================
+Lemma: Region extension
+
+1)
+  If La; R; X |- e: u t
+  and L = La, Lz
+  and for all l in domain(Lz), if RegionOfLoc(l) = r then r not in domain(R)
+  Then L; R; X |- e: u t
+2)
+  If La; R |- d: u
+  and L = La, Lz
+  and for all l in domain(Lz), if RegionOfLoc(l) = r then r not in domain(R)
+  Then L; R |- d: u
+3)
+  If La; R; X |- s: S containing u
+  and L = La, Lz
+  and for all l in domain(Lz), if RegionOfLoc(l) = r then r not in domain(R)
+  Then L; R; X  |- s: S containing u
+
+Induction on La; R; X |- e: u t and La; R |- d: u and La; R; X |- s: S containing u
+Let Ca = La; R; X
+Let Cz = Lz; {}; {}
+
+CASE i
+  By typing rule:
+    Ca = !Ca
+    !Ca |- i: ordinary int
+  By typing rule:
+    !Ca, !Cz |- i: ordinary int
+
+CASE r d
+  By typing rule:
+    R = R' # {r' -> u}
+    domain(d) = {l in domain(La) | RegionOfLoc(l) = r'}
+    La; R' |- d: u
+    ---------------------------------------------------
+    La; R' # {r' -> u}; !X |- r d: u region
+  For all l in domain(Lz), if RegionOfLoc(l) = r then r not in domain(R' # {r' -> u})
+  So for all l in domain(Lz), if RegionOfLoc(l) = r then r != r'
+  So for all l in domain(Lz), RegionOfLoc(l) != r'
+  So {l in domain(Lz) | RegionOfLoc(l) = r'} = {}
+  Rewriting:
+    domain(d)
+    = {l in domain(La) | RegionOfLoc(l) = r'}
+    = {l in domain(La, Lz) | RegionOfLoc(l) = r'}
+  By induction:
+    La, Lz; R' |- d: u
+  By typing rule:
+    La, Lz; R' # {r' -> u}; !X |- r d: u region
+
+CASE e1 + e2
+  By typing rule:
+    Ca = C1 # C2
+    C1 |- e1: ordinary int
+    C2 |- e2: ordinary int
+  By induction:
+    C1, Cz |- e1: ordinary int
+    C2, Cz |- e2: ordinary int
+  By typing rule:
+    (C1, Cz) # (C2, Cz) |- e1 + e2: ordinary int
+    (C1 # C2), Cz |- e1 + e2: ordinary int
+
+Other cases are similar.
+
+=====================================================================
+Lemma: Not free
+
+If L; R; X |- e: u t
+and x not in domain(X)
+Then x is not a free variable of e
+
+Proof by induction on L; R; X |- e: u t
+
+CASE e = v
+  Syntactically, d does not contain free variables
+
+CASE x
+  Typing rule:
+    L; !R; !X, x -> u t |- x: u t
+  x is in domain(!X, x -> u t)
+
+CASE e1 + e2
+  (L; R; X) = (L; R1 # R2; X1 # X2)
+  x not in domain(X1) and x not in domain(X2)
+  by induction, x is not free in e1 and x is not free in e2
+
+Other cases are similar.
+
+=====================================================================
+Theorem: Progress
+  If L; R; {} |- e: u t
+  and |- wp(e, x. f)
+  and e is not a value
+  Then there is an e' such that e --> e'
+
+Induction on L; R; {} |- e: u t
+
+CASE e1 + e2
+  case e1 is not a value
+    by induction, e1 --> e1'
+  case e1 = v1, e2 is not a value
+    by induction, e2 --> e2'
+  case e1 = v1, e2 = v2
+    by typing rule for v1 + v2:
+      ... |- v1: ordinary int
+      ... |- v2: ordinary int
+    by Lemma: Canonical forms, v1 = i1 and v2 = i2
+    by operational semantics rule:
+      i1 + i2 --> i3
+
+CASE e1; e2
+  case e1 is not a value
+    by induction, e1 --> e1'
+  case e1 = v1
+    by operational semantics rule:
+      v1; e2 --> e2
+
+CASE x
+  By typing rule, x cannot be well typed in X = {}
+
+CASE let u x = e1 in e2
+  case e1 is not a value
+    by induction, e1 --> e1'
+  case e1 = v1
+    by operational semantics rule:
+      let u x = v1 in e2 --> e2[x := v1]
+
+CASE tuple(e1 ... en)
+  case e1 = v1 .. e(j-1) = v(j-1) and ej is not a value
+    by induction, ej --> ej'
+
+CASE e0.i
+  case e0 is not a value
+    by induction, e0 --> e0'
+  case e0 = v0
+    by typing rule for v0.i:
+      ... |- v0: shared tuple(...ui ti...)
+    by Lemma: Canonical forms, v0 = tuple(...vi...)
+    by operational semantics rule:
+      tuple(v1 ... vi ... vn).i -> vi
+
+CASE let tuple(x1 ... xn) = e0 in ex
+  case e0 is not a value
+    by induction, e0 --> e0'
+  case e0 = v0
+    by typing rule for let tuple(x1 ... xn) = v0 in ex:
+      ... |- v0: linear tuple(u1 t1 ... un tn)
+    by Lemma: Canonical forms, v0 = tuple(v1 ... vn)
+    by operational semantics rule:
+      let tuple(x1 ... xn) = tuple(v1 ... vn) in ex -> ex[x1 := v1 ... xn := vn]
+
+CASE new_region()
+  by operational semantics rule:
+    new_region() -> r {}
+
+CASE free_region(e1)
+  case e1 is not a value
+    by induction, e1 --> e1'
+  case e1 = v1
+    by typing rule for free_region(v1),
+      ... |- v1: linear region
+    by Lemma: Canonical forms, v1 = r d
+    by operational semantics rule:
+      free_region(r d) -> 0
+
+CASE alloc S(e1 ... en) @ e0
+  case e0 is not a value
+    by induction, e0 --> e0'
+  case e1 = v1 .. e(j-1) = v(j-1) and ej is not a value
+    by induction, ej --> ej'
+  case e0 = v0, e1 = v1, ..., en = vn
+    by typing rule for alloc:
+      ... |- v0: linear region
+    by Lemma: Canonical forms, v0 = r d
+    Choose fresh location l such that RegionOfLoc(l) = r
+      (note: this is always possible, since we assume an infinite number of locations for every region r)
+    let s = S(v1 ... vn)
+    by operational semantics rule:
+      alloc s @ r d -> tuple(l, r (d, l -> s))
+
+CASE read(e1.i) @ e0
+  cases where e0 or e1 aren't values are straightforward by induction
+  case e0 = v0, e1 = v1
+    by typing rule for read:
+      ... |- v0: shared region
+      ... |- v1: ordinary ref(S)
+    by Lemma: Canonical forms, v0 = r d
+    by Lemma: Canonical forms, v1 = l or v1 = null
+    wp(read(v1.i) @ v0, x. f)
+      = wp(v0, x0. wp(v1, x1. valid_ref(x1, name_of_region(x0)) /\ f[x := read(x1.i) @ x0]))
+      = wp(r d, x0. wp(v1, x1. valid_ref(x1, name_of_region(x0)) /\ f[x := read(x1.i) @ x0]))
+      by Lemma: WP value
+      = valid_ref(v1, name_of_region(r d)) /\ f[x := read(v1.i) @ r d]
+      by definition of valid_ref, v1 = l and RegionOfLoc(l) = r
+    e = read(l.i) @ r d
+    by typing rule for l, L contains l -> S
+    by typing rule for r d, domain(d) = {l in domain(L) such that RegionOfLoc(l) = r}
+    since RegionOfLoc(l) = r and l in domain(L) we know l in domain(d)
+    by typing rule for d, d(l) = s has struct instance type L(l) = S
+    by typing rule for read, StructType(S) = (..., ui ti, ...)
+    by typing rule for struct instance s, s = S(...vsi...)
+    by operational semantics rule for read, e --> vsi
+
+CASE write(e1.i := e2) @ e0
+  cases where e0 or e1 or e2 aren't values are straightforward by induction
+  case e0 = v0, e1 = v1, e2 = v2
+    by typing rule for write:
+      ... |- v0: linear region
+      ... |- v1: ordinary ref(S)
+      ... |- v2: ordinary ti
+    by Lemma: Canonical forms, v0 = r d
+    by Lemma: Canonical forms, v1 = l or v1 = null
+    wp(write(v1.i := v2) @ v0, x0'. f)
+      = wp(v0, x0. wp(v1, x1. wp(v2, x2. valid_ref(x1, name_of_region(x0)) /\ ...)))
+      = wp(r d, x0. wp(v1, x1. wp(v2, x2. valid_ref(x1, name_of_region(x0)) /\ ...)))
+      by Lemma: WP value
+      = valid_ref(v1, name_of_region(r d)) /\ ...
+      by definition of valid_ref, v1 = l and RegionOfLoc(l) = r
+    e = write(l.i := v2) @ r d
+    by typing rule for l, L contains l -> S
+    by typing rule for r d, domain(d) = {l in domain(L) such that RegionOfLoc(l) = r}
+    since RegionOfLoc(l) = r and l in domain(L) we know l in domain(d)
+    by typing rule for d, d(l) = s has struct instance type L(l) = S
+    by typing rule for write, StructType(S) = (..., ordinary ti, ...)
+    by typing rule for struct instance s, s = S(...vsi...)
+    by operational semantics rule for write:
+      write(l.i := v2) @ r (d, l -> S(vs1 ... vsi ... vsn)) -> r (d, l -> S(vs1 ... v2 ... vsn))
+
+CASE swap(e1.i := e2) @ e0
+  cases where e0 or e1 or e2 aren't values are straightforward by induction
+  case e0 = v0, e1 = v1, e2 = v2
+    by typing rule for swap:
+      ... |- v0: linear region
+      ... |- v1: ordinary ref(S)
+      ... |- v2: linear ti
+    by Lemma: Canonical forms, v0 = r d
+    by Lemma: Canonical forms, v1 = l or v1 = null
+    wp(swap(v1.i := v2) @ v0, x0'. f)
+      = wp(v0, x0. wp(v1, x1. wp(v2, x2. valid_ref(x1, name_of_region(x0)) /\ ...)))
+      = wp(r d, x0. wp(v1, x1. wp(v2, x2. valid_ref(x1, name_of_region(x0)) /\ ...)))
+      by Lemma: WP value
+      = valid_ref(v1, name_of_region(r d)) /\ ...
+      by definition of valid_ref, v1 = l and RegionOfLoc(l) = r
+    e = swap(l.i := v2) @ r d
+    by typing rule for l, L contains l -> S
+    by typing rule for r d, domain(d) = {l in domain(L) such that RegionOfLoc(l) = r}
+    since RegionOfLoc(l) = r and l in domain(L) we know l in domain(d)
+    by typing rule for d, d(l) = s has struct instance type L(l) = S
+    by typing rule for swap, StructType(S) = (..., linear ti, ...)
+    by typing rule for struct instance s, s = S(...vsi...)
+    by operational semantics rule for swap:
+      swap(l.i := v2) @ r (d, l -> S(vs1 ... vsi ... vsn)) -> tuple(vsi, r (d, l -> S(vs1 ... v2 ... vsn)))
+
+=====================================================================
+Lemma: Canonical forms
+  If C |- v: u t
+  Then:
+    - if t = int then v = i
+    - if t = ref(S) then v = l or v = null
+    - if t = region then v = r d
+    - if t = tuple(u1 t1 ... un tn) then v = tuple(v1 ... vn)
+
+Proof by cases of C |- v: u t
+
+CASE v = i
+  By typing rule, t = int
+
+CASE v = l | null
+  By typing rule, t = ref(S)
+
+CASE v = r d
+  By typing rule, t = region
+
+CASE v = tuple(v1 ... vn)
+  By typing rule, t = tuple(...)
+
+Thus, the types t correspond to the values v exactly as stated in the lemma.
+
+=====================================================================
+Theorem: WP preservation
+
+If C |- e: u t
+and |- wp(e, x. f)
+and e --> e'
+Then |- wp(e', x. f)
+
+Induction on e
+
+
+NON-CONGRUENCE CASES
+
+CASE i1 + i2 --> i3
+  |- wp(i1 + i2, x. f)
+  |- wp(i1, x1. wp(i2, x2. f[x := x1 + x2]))
+  by Lemma: WP value (note: since x1 was chosen fresh, it does not appear in f):
+  |- wp(i2, x2. f[x := i1 + x2])
+  by Lemma: WP value
+  |- f[x := i1 + i2]
+  i3 = i1 + i2
+  |- f[x := i3]
+  by Lemma: WP value
+  |- wp(i3, x. f)
+
+CASE v1; e2 -> e2
+  |- wp(v1; e2, x2. f)
+  |- wp(v1, x1. wp(e2, x2. f))
+  by Lemma: WP value (note: since x1 was chosen fresh, it does not appear in f):
+  |- wp(e2, x2. f)
+
+CASE let u x1 = v1 in e2 -> e2[x1 := v1]
+  Alpha-rename so that x1 is not free in f
+  |- wp(let u x1 = v1 in e2, x2. f)
+  |- wp(v1, x1. wp(e2, x2. f))
+  by Lemma: WP value
+  |- wp(e2[x1 := v1], x2. f)
+
+CASE tuple(v1 ... vi ... vn).i -> vi
+  |- wp(tuple(v1 ... vi ... vn).i, x. f)
+  |- wp(tuple(v1 ... vi ... vn), x0. f[x = x0.i])
+  by Lemma: WP value
+  |- f[x = tuple(v1 ... vi ... vn).i]
+  tuple(v1 ... vi ... vn).i = vi
+  |- f[x = vi]
+  by Lemma: WP value
+  |- wp(vi, x. f)
+
+CASE let tuple(x1 ... xn) = tuple(v1 ... vn) in e0 -> e0[x1 := v1 ... xn := vn]
+  Alpha-rename so that x1 ... xn are not free in f
+  |- wp(let tuple(x1 ... xn) = tuple(v1 ... vn) in e0, x.f)
+  |- wp(tuple(v1 ... vn), x0. forall x1 ... forall xn. x0 == tuple(x1 ... xn) ==> wp(e0, x. f))
+  by Lemma: WP value
+  |- forall x1 ... forall xn. tuple(v1 ... vn) == tuple(x1 ... xn) ==> wp(e0, x. f)
+  Instantiate x1 = v1, ..., xn = vn:
+  |- tuple(v1 ... vn) == tuple(v1 ... vn) ==> wp(e0[x1 := v1 ... xn := vn], x. f)
+  tuple(v1 ... vn) == tuple(v1 ... vn) is true
+  |- true ==> wp(e0[x1 := v1 ... xn := vn], x. f)
+  |- wp(e0[x1 := v1 ... xn := vn], x. f)
+
+CASE new_region() -> r {} where r is fresh
+  |- wp(new_region(), x. f)
+  |- forall x. f
+  Instantiate x = r {}
+  |- f[x := r {}]
+  by Lemma: WP value
+  |- wp(r {}, x. f)
+
+CASE free_region(r d) -> 0
+  |- wp(free_region(r d), x. f)
+  |- wp(r d, x0. forall x. f)
+  by Lemma: WP value (note: since x0 was chosen fresh, it does not appear in f):
+  |- forall x. f
+  Instantiate x = 0
+  |- f[x := 0]
+  by Lemma: WP value
+  |- wp(0, x. f)
+
+CASE alloc s @ r d -> tuple(l, r (d, l -> s)) where l is fresh and RegionOfLoc(l) = r
+  Let s = S(v1 ... vn)
+  |- wp(alloc S(v1 ... vn) @ e0, x'. f)
+  |- wp(r d, x0. wp(v1, x1. ... wp(vn, xn.
+        forall xl', x0'. valid_ref(xl', name_of_region(x0)) /\ fresh_ref(xl') @ x0 /\ modifies() @ (x0 -> x0') /\
+                    x1 == read(xl'.1) @ x0' /\ ... /\ xn == read(xl'.n) @ x0'
+                ==> f[x' := tuple(xl', x0')]) ... ))
+  by Lemma: WP value n + 1 times:
+  |- forall xl', x0'. valid_ref(xl', name_of_region(r d)) /\ fresh_ref(xl') @ r d /\ modifies() @ (r d -> x0') /\
+                    v1 == read(xl'.1) @ x0' /\ ... /\ vn == read(xl'.n) @ x0'
+                ==> f[x' := tuple(xl', x0')]
+  Instantiate xl' = l and x0' = r (d, l -> s)
+  |- valid_ref(l, name_of_region(r d)) /\ fresh_ref(l) @ r d /\ modifies() @ (r d -> r (d, l -> s)) /\
+                    v1 == read(l.1) @ r (d, l -> s) /\ ... /\ vn == read(l.n) @ r (d, l -> s)
+                ==> f[x' := tuple(l, r (d, l -> s))]
+  valid_ref(l, name_of_region(r d)) = valid_ref(l, r), which is true since RegionOfLoc(l) = r
+  fresh_ref(l) @ r d is true since l not in domain(d), since l is fresh
+  modifies() @ (r d -> r (d, l -> s)) is true since (d, l -> s) equals d except that (d, l -> s) contains the additional mapping l -> s
+  read(l.1) @ r (d, l -> s) = read(l.1) @ r (d, l -> S(v1 ... vn)) = v1
+  ...
+  read(l.n) @ r (d, l -> s) = read(l.n) @ r (d, l -> S(v1 ... vn)) = vn
+  So:
+  |- true /\ true /\ true /\
+                    v1 == v1 /\ ... /\ vn == vn
+                ==> f[x' := tuple(l, r (d, l -> s))]
+  |- f[x' := tuple(l, r (d, l -> s))]
+  by Lemma: WP value
+  |- wp(tuple(l, r (d, l -> s)), x'. f)
+
+CASE read(l.i) @ r (d, l -> S(v1 ... vn)) -> vi
+  Let s = S(v1 ... vn)
+  |- wp(read(l.i) @ r (d, l -> s), x. f)
+  |- wp(r (d, l -> s), x0. wp(l, x1. valid_ref(x1, name_of_region(x0)) /\ f[x := read(x1.i) @ x0]))
+  by Lemma: WP value twice:
+  |- valid_ref(l, name_of_region(r (d, l -> s))) /\ f[x := read(l.i) @ r (d, l -> s)]
+  valid_ref(l, name_of_region(r (d, l -> s))) = valid_ref(l, r), which is true since RegionOfLoc(l) = r
+  read(l.i) @ r (d, l -> s) = read(l.i) @ r (d, l -> S(v1 ... vn)) = vi
+  |- true /\ f[x := vi]
+  |- f[x := vi]
+  by Lemma: WP value
+  |- wp(vi, x. f)
+
+CASE write(l.i := vi') @ r (d, l -> S(v1 ... vi ... vn)) -> r (d, l -> S(v1 ... vi' ... vn))
+  Let s = S(v1 ... vi ... vn)
+  Let s' = S(v1 ... vi' ... vn)
+  |- wp(write(l.i := vi') @ r (d, l -> s), x0'. f)
+  |- wp(r (d, l -> s), x0. wp(l, x1. wp(vi', x2. valid_ref(x1, name_of_region(x0)) /\
+        (forall x0'. x2 == read(x1.i) @ x0' /\ modifies (x1.i) @ (x0 -> x0') ==> f))))
+  by Lemma: WP value three times:
+  |- valid_ref(l, name_of_region(r (d, l -> s))) /\
+        (forall x0'. vi' == read(l.i) @ x0' /\ modifies (l.i) @ (r (d, l -> s) -> x0') ==> f)
+  valid_ref(l, name_of_region(r (d, l -> s))) = valid_ref(l, r), which is true since RegionOfLoc(l) = r
+  |- true /\
+        (forall x0'. vi' == read(l.i) @ x0' /\ modifies (l.i) @ (r (d, l -> s) -> x0') ==> f)
+  |- forall x0'. vi' == read(l.i) @ x0' /\ modifies (l.i) @ (r (d, l -> s) -> x0') ==> f
+  Instantiate x0' = r (d, l -> s'):
+  |- vi' == read(l.i) @ r (d, l -> s') /\ modifies (l.i) @ (r (d, l -> s) -> r (d, l -> s')) ==> f[x0' := r (d, l -> s')]
+  read(l.i) @ r (d, l -> s') = read(l.i) @ r (d, l -> S(v1 ... vi' ... vn)) = vi'
+  modifies (l.i) @ (r (d, l -> s) -> r (d, l -> s')) is true since (d, l -> s) equals (d, l -> s') except at l.i
+  |- vi' == vi' /\ true ==> f[x0' := r (d, l -> s')]
+  |- true /\ true ==> f[x0' := r (d, l -> s')]
+  |- f[x0' := r (d, l -> s')]
+  by Lemma: WP value
+  |- wp(r (d, l -> s'), x0'. f)
+
+CASE swap(l.i := vi') @ r (d, l -> S(v1 ... vi ... vn)) -> tuple(vi, r (d, l -> S(v1 ... vi' ... vn)))
+  Let s = S(v1 ... vi ... vn)
+  Let s' = S(v1 ... vi' ... vn)
+  |- wp(swap(l.i := vi') @ r (d, l -> s), x'. f)
+  |- wp(r (d, l -> s), x0. wp(l, x1. wp(vi', x2. valid_ref(x1, name_of_region(x0)) /\
+        (forall x0'. forall x2'.
+          x2 == read(x1.i) @ x0' /\ x2' == read(x1.i) @ x0 /\ modifies(x1.i) @ (x0 -> x0') ==>
+          f[x' := tuple(x2', x0')]))))
+  by Lemma: WP value three times:
+  |- (forall x0'. forall x2'.
+          vi' == read(l.i) @ x0' /\ x2' == read(l.i) @ r (d, l -> s) /\ modifies(l.i) @ (r (d, l -> s) -> x0') ==>
+          f[x' := tuple(x2', x0')])
+  Instantiate x0' = r (d, l -> s') and x2' = vi:
+  |-      vi' == read(l.i) @ r (d, l -> s') /\ vi == read(l.i) @ r (d, l -> s) /\ modifies(l.i) @ (r (d, l -> s) -> r (d, l -> s')) ==>
+          f[x' := tuple(vi, r (d, l -> s'))]
+  read(l.i) @ r (d, l -> s) = read(l.i) @ r (d, l -> S(v1 ... vi ... vn)) = vi
+  read(l.i) @ r (d, l -> s') = read(l.i) @ r (d, l -> S(v1 ... vi' ... vn)) = vi'
+  modifies (l.i) @ (r (d, l -> s) -> r (d, l -> s')) is true since (d, l -> s) equals (d, l -> s') except at l.i
+  |-      vi' == vi' /\ vi == vi /\ true ==>
+          f[x' := tuple(vi, r (d, l -> s'))]
+  |-      true /\ true /\ true ==>
+          f[x' := tuple(vi, r (d, l -> s'))]
+  |- f[x' := tuple(vi, r (d, l -> s'))]
+  by Lemma: WP value
+  |- wp(tuple(vi, r (d, l -> s')), x'. f)
+
+
+CONGRUENCE CASES
+
+CASE e1 + e2 --> e1' + e2
+  |- wp(e1 + e2, x. f)
+  |- wp(e1, x1. wp(e2, x2. f[x := x1 + x2]))
+  by induction:
+  |- wp(e1', x1. wp(e2, x2. f[x := x1 + x2]))
+  |- wp(e1' + e2, x. f)
+
+CASE v1 + e2 --> v1 + e2'
+  |- wp(v1 + e2, x. f)
+  |- wp(v1, x1. wp(e2, x2. f[x := x1 + x2]))
+  by Lemma: WP value (note: since x1 was chosen fresh, it does not appear in e2, e2', f):
+  |- wp(e2, x2. f[x := v1 + x2])
+  by induction:
+  |- wp(e2', x2. f[x := v1 + x2])
+  by Lemma: WP value
+  |- wp(v1, x1. wp(e2', x2. f[x := x1 + x2]))
+
+Other congruence cases are similar.
+
+=====================================================================
+Lemma: WP value
+
+wp(v, x. f) = f[x := v]
+
+Induction on v.
+
+CASES v = i | l | null | r d
+  By definition of wp(v, x.f)
+
+CASE v = tuple(v1 ... vn)
+    wp(tuple(v1 ... vn), x. f)
+  = wp(v1, x1. ... wp(vn, xn. f[x := tuple(x1 ... xn)])...)
+    By induction on v1:
+  = wp(v2, x2. ... wp(vn, xn. f[x1 := v1][x := tuple(x1 ... xn)])...)
+    ...
+    By induction on vn:
+  = f[x1 := v1 ... xn := vn][x := tuple(x1 ... xn)]
+  = f[x := tuple(v1 ... vn)]
+
+=====================================================================
+Theorem: Region agreement preservation
+
+If C |- e: u t
+and e --> e'
+and |versions_r(e)| <= 1
+Then |versions_r(e')| <= 1
+and if r was not chosen as a fresh region name during e --> e', then |versions_r(e')| <= |versions_r(e)|
+
+let C = L; R; X
+
+Induction on C |- e: u t
+
+
+NON-CONGRUENCE CASES
+
+(Note: most of these non-congruence cases are also used for Lemma: Shared regions immutable.
+We write them here once and refer to them in Lemma: Shared regions immutable.
+None of the non-congruence cases use induction, and none of them call Lemma: Shared regions immutable.)
+
+CASE i1 + i2 -> i3
+  |versions_r(i1)| = |versions_r(i2)| = |versions_r(i3)| = 0
+
+CASE v1; e2 -> e2
+  versions_r(e2) subset of versions_r(v1; e2)
+  |versions_r(e2)| <= |versions(v1; e2)|
+
+CASE let u x = v1 in e2 -> e2[x := v1]
+  versions_r(let u x = v1 in e2) = versions_r(v1) union versions_r(e2)
+  By Lemma: Version substitution:
+    versions_r(e2[x := v1]) subsetof versions_r(e2) union versions_r(v1)
+  So versions_r(e') subsetof versions_r(e)
+  So |versions_r(e')| <= |versions_r(e)|
+
+CASE tuple(v1 ... vi ... vn).i -> vi
+  versions_r(tuple(v1 ... vi ... vn).i) = versions_r(v1) union ... union versions_r(vi) union ... union versions_r(vn)
+  So versions_r(vi) subsetof versions_r(tuple(v1 ... vi ... vn).i)
+  So versions_r(e') subsetof versions_r(e)
+  So |versions_r(e')| <= |versions_r(e)|
+
+CASE let tuple(x1 ... xn) = tuple(v1 ... vn) in e0 -> e0[x1 := v1 ... xn := vn]
+  versions_r(let tuple(x1 ... xn) = tuple(v1 ... vn) in e0) = versions_r(v1) union ... union versions_r(vn) union versions_r(e0)
+  By Lemma: Version substitution:
+    versions_r(e0[x1 := v1 ... xn := vn]) subset of versions_r(v1) union ... union versions_r(vn) union versions_r(e0)
+  So versions_r(e') subsetof versions_r(e)
+  So |versions_r(e')| <= |versions_r(e)|
+
+CASE new_region() -> r' {} where r' is fresh
+  case r = r':
+    |versions_r(new_region())| = 0
+    |versions_r(r {})| = |{{}}| = 1
+    r was chosen as a fresh region name during e --> e', so we allow |versions_r(e')| > |versions_r(e)|
+  case r != r':
+    |versions_r(new_region())| = 0
+    |versions_r(r' {})| = |{}| = 0
+
+CASE free_region(r' d) -> 0
+  case r = r':
+    |versions_r(0)| = 0
+  case r != r':
+    |versions_r(0)| = 0
+
+CASE alloc s @ r' d -> tuple(l, r' (d, l -> s)) where l is fresh and RegionOfLoc(l) = r'
+  Let s = S(v1 ... vn)
+  case r = r':
+    By typing rule for alloc:
+      C = C0 # C1 # ... # Cn
+      C0 |- r d: linear region
+      C1 |- v1: u1 t1
+      ...
+      Cn |- vn: un tn
+    By typing rule for r d:
+      C0 = L; R0; !X0
+      R0 = R0' # {r -> linear}
+      L; R0' |- d: u
+    By Lemma: No region versions:
+      |versions_r(d)| = 0
+      |versions_r(v1)| = 0
+      ...
+      |versions_r(vn)| = 0
+    So |versions_r(s)| = 0
+    versions_r(alloc s @ r d)
+    = versions_r(s) union versions_r(r d)
+    = versions_r(s) union {d} union versions_r(d)
+    = {} union {d} union {}
+    = {d}
+    So |versions_r(e)| = |versions_r(alloc s @ r d)| = 1
+    = versions_r(tuple(l, r (d, l -> s)))
+    = versions_r(r (d, l -> s))
+    = {(d, l -> s}} union versions_r(d) union versions_r(s)
+    = {(d, l -> s}} union {} union {}
+    = {(d, l -> s}}
+    So |versions_r(e')| = |versions_r(tuple(l, r (d, l -> s)))| = 1
+  case r != r':
+    versions_r(alloc s @ r' d)
+    = versions_r(s) union versions_r(r' d)
+    = versions_r(s) union versions_r(d)
+    = versions_r((d, l -> s))
+    = versions_r(r' (d, l -> s))
+    = versions_r(tuple(l, r' (d, l -> s)))
+    So versions_r(e') = versions_r(e)
+
+CASE read(l.i) @ r' (d, l -> S(v1 ... vn)) -> vi
+  Let s = S(v1 ... vn)
+  case r = r':
+    versions_r(read(l.i) @ r (d, l -> s))
+    = versions_r(r (d, l -> s))
+    = {(d, l -> s)} union versions_r((d, l -> s))
+    = {(d, l -> s)} union versions_r(d) union union versions_r(s)
+    versions_r(vi) subsetof versions_r(s)
+    So versions_r(e') subsetof versions_r(e)
+    So |versions_r(e')| <= |versions_r(e)|
+  case r != r':
+    versions_r(read(l.i) @ r' (d, l -> s))
+    = versions_r(d) union versions_r(s)
+    versions_r(vi) subsetof versions_r(s)
+    So versions_r(e') subsetof versions_r(e)
+    So |versions_r(e')| <= |versions_r(e)|
+
+CASE write(l.i := vi') @ r' (d, l -> S(v1 ... vi ... vn)) -> r' (d, l -> S(v1 ... vi' ... vn))
+  Let s = S(v1 ... vi ... vn)
+  Let s' = S(v1 ... vi' ... vn)
+  case r = r':
+    By typing rule for write:
+      C = C0 # C1 # C2
+      C0 |- r (d, l -> s): linear region
+      C1 |- l: ordinary ref(S)
+      C2 |- vi': ordinary ti
+    By typing rule for r (d, l -> s):
+      C0 = L; R0; !X0
+      R0 = R0' # {r -> linear}
+      L; R0' |- (d, l -> s): u
+    By Lemma: No region versions:
+      |versions_r((d, l -> s))| = 0
+      |versions_r(vi')| = 0
+    versions_r(write(l.i := vi') @ r (d, l -> s))
+    = versions_r(vi') union versions_r(r (d, l -> s))
+    = versions_r(vi') union {(d, l -> s)} union versions_r((d, l -> s))
+    = {} union {(d, l -> s)} union {}
+    = {(d, l -> s)}
+    So |versions_r(e)| = |versions_r(write(l.i := vi') @ r (d, l -> s))| = 1
+    versions_r(r (d, l -> s'))
+    = {(d, l -> s')} union versions_r((d, l -> s'))
+    = {(d, l -> s')} union {}
+    = {(d, l -> s')}
+    So |versions_r(e')| = |versions_r(r (d, l -> s'))| = 1
+  case r != r':
+    versions_r(write(l.i := vi') @ r' (d, l -> s))
+    = versions_r(vi') union versions_r(r' (d, l -> s))
+    = versions_r(vi') union versions_r((d, l -> s))
+    = versions_r(vi') union versions_r(d) union versions_r(s)
+    = versions_r(vi') union versions_r(d) union versions_r(v1) union ... union versions_r(vi) union ... union versions_r(vn)
+    = versions_r(vi) union versions_r(d) union versions_r(v1) union ... union versions_r(vi') union ... union versions_r(vn)
+    = versions_r(vi) union versions_r(d) union versions_r(s')
+    versions_r(r' (d, l -> s'))
+    = versions_r((d, l -> s'))
+    = versions_r(d) union versions_r(s')
+    So versions_r(e') subsetof versions_r(e)
+    So |versions_r(e')| <= |versions_r(e)|
+
+CASE swap(l.i := vi') @ r' (d, l -> S(v1 ... vi ... vn)) -> tuple(vi, r' (d, l -> S(v1 ... vi' ... vn)))
+  Let s = S(v1 ... vi ... vn)
+  Let s' = S(v1 ... vi' ... vn)
+  case r = r':
+    By typing rule for swap:
+      C = C0 # C1 # C2
+      C0 |- r (d, l -> s): linear region
+      C1 |- l: ordinary ref(S)
+      C2 |- vi': linear ti
+    By typing rule for r (d, l -> s):
+      C0 = L; R0; !X0
+      R0 = R0' # {r -> linear}
+      L; R0' |- (d, l -> s): u
+    By Lemma: No region versions:
+      |versions_r((d, l -> s))| = 0
+      |versions_r(vi')| = 0
+    versions_r(swap(l.i := vi') @ r (d, l -> s))
+    = versions_r(vi') union versions_r(r (d, l -> s))
+    = versions_r(vi') union {(d, l -> s)} union versions_r((d, l -> s))
+    = {} union {(d, l -> s)} union {}
+    = {(d, l -> s)}
+    So |versions_r(e)| = |versions_r(swap(l.i := vi') @ r (d, l -> s))| = 1
+    versions_r(tuple(vi, r (d, l -> s')))
+    = versions_r(vi) union {(d, l -> s')} union versions_r((d, l -> s'))
+    = versions_r(vi) union {(d, l -> s')} union versions_r(d) union versions_r(s'))
+    = versions_r(vi') union {(d, l -> s')} union versions_r(d) union versions_r(s))
+    = versions_r(vi') union {(d, l -> s')} union versions_r((d, l -> s))
+    = {} union {(d, l -> s')} union {}
+    = {(d, l -> s')}
+    So |versions_r(e')| = |versions_r(tuple(vi, r' (d, l -> s')))| = 1
+  case r != r':
+    versions_r(swap(l.i := vi') @ r' (d, l -> s))
+    = versions_r(vi') union versions_r(r' (d, l -> s))
+    = versions_r(vi') union versions_r((d, l -> s))
+    = versions_r(vi') union versions_r(d) union versions_r(s)
+    = versions_r(vi) union versions_r(d) union versions_r(s')
+    versions_r(tuple(vi, r' (d, l -> s')))
+    = versions_r(vi) union versions_r((d, l -> s'))
+    = versions_r(vi) union versions_r(d) union versions_r(s')
+    So versions_r(e') = versions_r(e)
+
+
+CONGRUENCE CASES
+
+CASE e1 + e2 --> e1' + e2
+  case: r not in domain(R)
+    by Lemma: No region versions, |versions_r(e1)| = |versions_r(e2)| = 0
+    by induction, |versions_r(e1')| <= 1
+    case: r not chosen as a fresh region name during e1 --> e1'
+      by induction, |versions_r(e1')| = 0
+      |versions_r(e1' + e2)| = 0
+    case: r chosen as a fresh region name during e1 --> e1'
+      |versions_r(e1' + e2)| <= 1
+  case: r -> shared in R
+    by Lemma: Shared regions immutable, versions_r(e1' + e2) subset of versions_r(e1 + e2)
+    |versions_r(e1 + e2')| <= |versions(e1 + e2)|
+  case: r -> linear in R1
+    r not chosen as a fresh region name during e1 --> e1'
+    by Lemma: No region versions, |versions_r(e2)| = 0
+    by induction, |versions_r(e1')| <= 1
+      |versions_r(e1' + e2)| <= 1
+    by induction, |versions_r(e1')| <= |versions_r(e1)|
+      |versions_r(e1' + e2)| <= |versions_r(e1 + e2)|
+  case: r -> linear in R2
+    r not chosen as a fresh region name during e1 --> e1'
+    |versions_r(e2)| <= 1
+    by Lemma: No region versions, |versions_r(e1)| = 0
+    by induction, |versions_r(e1')| = 0
+    |versions_r(e1' + e2)| = |versions_r(e1 + e2)|
+
+CASE e1; e2 --> e1'; e2
+  same as e1 + e2, but one more case:
+  case r -> linear in linear(Cb):
+    r not chosen as a fresh region name during e1 --> e1'
+    by Lemma: Shared regions immutable, versions_r(e1') subset of versions_r(e1)
+    versions_r(e1'; e2) subset of versions_r(e1; e2)
+    |versions_r(e1'; e2)| <= |versions(e1; e2)|
+(Note: there is no rule allowing v1; e2 --> v1; e2'.
+Such a rule would, in fact, violate Region agreement preservation.
+The key observation is that e1; e2 is sequential:
+e1 completely finishes and ceases sharing of shared(Cb) before e2 starts.)
+
+Other congruence cases are similar.
+
+=====================================================================
+Lemma: Shared regions immutable
+
+If L; R, r -> shared; X |- e: u t
+and e --> e'
+Then versions_r(e') subset of versions_r(e)
+
+Induction on L; R, r -> shared; X |- e: u t
+Let C = L; R, r -> shared; X
+
+
+NON-CONGRUENCE CASES
+
+(Note: many of the non-congruence cases are identical
+to the cases written in Theorem: Region agreement preservation.
+We could copy and paste them here,
+but it's more concise to just refer back to the cases in Theorem: Region agreement preservation.)
+
+CASE i1 + i2 -> i3 where i3 is sum of i1, i2
+  Identical to case written in Theorem: Region agreement preservation.
+
+CASE v1; e2 -> e2
+  Identical to case written in Theorem: Region agreement preservation.
+
+CASE let u x = v1 in e2 -> e2[x := v1]
+  Identical to case written in Theorem: Region agreement preservation.
+
+CASE tuple(v1 ... vi ... vn).i -> vi
+  Identical to case written in Theorem: Region agreement preservation.
+
+CASE let tuple(x1 ... xn) = tuple(v1 ... vn) in e0 -> e0[x1 := v1 ... xn := vn]
+  Identical to case written in Theorem: Region agreement preservation.
+
+CASE new_region() -> r' {} where r' is fresh
+  case r = r':
+    Cannot happen, because r -> shared is already in C and r' is fresh
+  case r != r':
+    Identical to case written in Theorem: Region agreement preservation.
+
+CASE free_region(r d) -> 0
+  Identical to case written in Theorem: Region agreement preservation.
+
+CASE alloc s @ r d -> tuple(l, r (d, l -> s)) where l is fresh and RegionOfLoc(l) = r
+  case r = r':
+    By typing rule for alloc:
+      C = C0 # ...
+      C0 |- r d: linear region
+    By typing rule for r d: linear region:
+      C0 = L; R0' # {r -> linear}; !X0
+    This is a contradiction: we cannot have both r -> linear and r -> shared in C
+  case r != r':
+    Identical to case written in Theorem: Region agreement preservation.
+
+CASE read(l.i) @ r (d, l -> S(v1 ... vn)) -> vi
+  Identical to case written in Theorem: Region agreement preservation.
+
+CASE write(l.i := vi') @ r (d, l -> S(v1 ... vi ... vn)) -> r (d, l -> S(v1 ... vi' ... vn))
+  Let s = S(v1 ... vi ... vn)
+  case r = r':
+    By typing rule for write:
+      C = C0 # ...
+      C0 |- r (d, l -> s): linear region
+    By typing rule for r (d, l -> s): linear region:
+      C0 = L; R0' # {r -> linear}; !X0
+    This is a contradiction: we cannot have both r -> linear and r -> shared in C
+  case r != r':
+    Identical to case written in Theorem: Region agreement preservation.
+
+CASE swap(l.i := vi') @ r (d, l -> S(v1 ... vi ... vn)) -> tuple(vi, r (d, l -> S(v1 ... vi' ... vn)))
+  Let s = S(v1 ... vi ... vn)
+  case r = r':
+    By typing rule for swap:
+      C = C0 # ...
+      C0 |- r (d, l -> s): linear region
+    By typing rule for r (d, l -> s): linear region:
+      C0 = L; R0' # {r -> linear}; !X0
+    This is a contradiction: we cannot have both r -> linear and r -> shared in C
+  case r != r':
+    Identical to case written in Theorem: Region agreement preservation.
+
+
+CONGRUENCE CASES
+
+CASE e1 + e2 --> e1' + e2
+  By typing rule:
+    C = C1 # C2
+    C1 |- e1: ordinary int
+    C2 |- e2: ordinary int
+  So C1 contains r -> shared
+  By induction:
+    versions_r(e1') subset of versions_r(e1)
+  versions_r(e') = versions_r(e1') union versions_r(e2)
+  versions_r(e') subsetof versions_r(e1) union versions_r(e2)
+  versions_r(e') subsetof versions_r(e)
+
+CASE e1; e2 --> e1'; e2
+  By typing rule:
+    C = (C1 # C2), linear(Cb)
+    C1, shared(Cb) |- e1: u1 t1
+    C2, linear(Cb) |- e2: u2 t2
+  So C1 contains r -> shared
+  By induction:
+    versions_r(e1') subset of versions_r(e1)
+  versions_r(e') = versions_r(e1') union versions_r(e2)
+  versions_r(e') subsetof versions_r(e1) union versions_r(e2)
+  versions_r(e') subsetof versions_r(e)
+
+Other congruence cases are similar.
+
+=====================================================================
+Lemma: Version substitution
+
+versions_r(e[x1 := v1, ..., xn := vn]) subsetof versions_r(e) union versions_r(v1) union ... union versions_r(vn)
+
+Induction on e
+Let [xs := vs] be an abbreviation for [x1 := v1, ..., xn := vn]
+Let versions_vs = versions_r(v1) union ... union versions_r(vn)
+So we prove: versions_r(e[xs := vs]) subsetof versions_r(e) union versions_vs
+
+CASE e = v
+  Syntactically, v as no free variables, so e[xs := vs] = e
+
+CASE e = x
+  case x not in x1...xn:
+    e[xs := vs] = e
+  case x = xk:
+    e[xs := vs] = vk
+    version_r(vk) subsetof versions_vs
+
+CASE e1 + e2
+  By induction:
+    versions_r(e1[xs := vs]) subsetof versions_r(e1) union versions_vs
+    versions_r(e2[xs := vs]) subsetof versions_r(e2) union versions_vs
+  versions_r(e)
+  = versions_r(e1 + e2)
+  = versions_r(e1) union versions_r(e2)
+  versions_r(e[xs := vs])
+  = versions_r((e1 + e2)[xs := vs])
+  = versions_r(e1[xs := vs]) union versions_r(e2[xs := vs])
+  versions_r(e1[xs := vs]) union versions_r(e2[xs := vs]) subsetof (versions_r(e1) union versions_vs) union (versions_r(e2) union versions_vs)
+  versions_r(e1[xs := vs]) union versions_r(e2[xs := vs]) subsetof (versions_r(e1) union versions_r(e2)) union versions_vs
+  versions_r(e1[xs := vs]) union versions_r(e2[xs := vs]) subsetof versions_r(e) union versions_vs
+
+Other cases are similar.
+
+=====================================================================
+Lemma: No region versions
+
+1)
+  If L; R; X |- e: u t
+  and r not in domain(R)
+  Then |versions_r(e)| = 0
+2)
+  If L; R |- d: u
+  and r not in domain(R)
+  Then |versions_r(d)| = 0
+3)
+  If L; R; X |- s: S containing u
+  and r not in domain(R)
+  Then |versions_r(s)| = 0
+
+Induction on L; R; X |- e: u t and If L; R |- d: u and If L; R; X |- s: S containing u
+
+CASE e = i | l | null | x
+  |versions_r(e)| = 0
+
+CASE e = r' d
+  By typing rule:
+    R = R' # {r' -> u}
+    L; R' |- d: u
+    ---------------------------------------
+    L; R' # {r' -> u}; !X |- r' d: u region
+  r' in domain(R), so r' != r
+  versions_r(r' d) = versions_r(d)
+  r not in domain(R')
+  By induction, versions_r(d) = 0
+  So versions_r(r' d) = 0
+
+CASE e = e1 + e2
+  By typing rule:
+    L; R1; X1 |- e1: ordinary int
+    L; R2; X2 |- e2: ordinary int
+    --------------------------------------------
+    L; R1 # R2; X1 # X2 |- e1 + e2: ordinary int
+  where R = R1 # R2
+  By induction:
+    |versions_r(e1)| = 0
+    |versions_r(e2)| = 0
+  |versions_r(e1 + e2)| = |versions_r(e1) union versions_r(e2)| = 0
+
+CASE e = e1; e2
+  By typing rule:
+    (L; R1; X1), shared({}; Rb; Xb) |- e1: u1 t1
+    (L; R2; X2), linear({}; Rb; Xb) |- e2: u2 t2
+    ----------------------------------------------------------
+    (L; R1 # R2; X1 # X2), linear({}; Rb; Xb) |- e1; e2: u2 t2
+  where R = (R1 # R2), linear(Rb)
+  By induction:
+    |versions_r(e1)| = 0
+    |versions_r(e2)| = 0
+  |versions_r(e1; e2)| = |versions_r(e1) union versions_r(e2)| = 0
+
+Other cases are similar.

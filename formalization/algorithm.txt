@@ -1,0 +1,1491 @@
+=====================================================================
+Type inference algorithm X |- c e: u t borrows(Y) consumes(Z)
+  where consumption c = borrow | consume
+  and Y = {..., x, ...}
+  and Z = {..., x, ...}
+Here, X, c and e are inputs to the algorithm
+and u, t, Y, and Z are outputs from the algorithm.
+
+X, x -> linear t |- consume x: linear t borrows() consumes(x)
+
+X, x -> linear t |- borrow x: shared t borrows(x) consumes()
+
+X, x -> shared t |- borrow x: shared t borrows() consumes()
+
+X, x -> ordinary t |- c x: ordinary t borrows() consumes()
+
+X |- c i: ordinary int borrows() consumes()
+
+X |- c null: ordinary ref(S) borrows() consumes()
+
+X |- borrow e1: ordinary int borrows(Y1) consumes(Z1)
+X |- borrow e2: ordinary int borrows(Yx) consumes(Z2)
+Z = Z1 union Z2
+Y = Y1 union Yx
+disjoint(Z1, Z2)
+disjoint(Y, Z)
+-----------------------------------------------------
+X |- c e1 + e2: ordinary int borrows(Y) consumes(Z)
+
+X |- borrow e1: u1 t1 borrows(Y1) consumes(Z1)
+X |- c e2: u2 t2 borrows(Yx) consumes(Z2)
+u1 != linear
+disjoint(Z1, Z2)
+disjoint(Z1, Yx)
+----------------------------------------------------------------------
+X |- c e1; e2: u2 t2 borrows((Y1 - Z2) union Yx) consumes(Z1 union Z2)
+
+c1 = consume iff u1 = linear
+X |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+X, x -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+u1 = linear iff x in Z2
+x not in Yx
+disjoint(Z1, Z2)
+disjoint(Z1, Yx)
+If u1 = shared then disjoint(Y1, Z2)
+----------------------------------------------------------------------------------------------------
+X |- c2 let u1 x = e1 in e2: u2 t2 borrows((Y1 - Z2) union (Yx - {x})) consumes(Z1 union (Z2 - {x}))
+
+u != ordinary
+c = consume iff u = linear
+X |- c e1: u1' t1 borrows(Y1) consumes(Z1)
+...
+X |- c en: un' tn borrows(Yn) consumes(Zn)
+Z = Z1 union ... union Zn
+Y = Y1 union ... union Yn
+disjoint(Z1 ... Zn)
+disjoint(Y, Z)
+u1' = share_as(u, u1)
+...
+un' = share_as(u, un)
+--------------------------------------------------------------------------
+X |- c tuple(e1 ... en): u tuple(u1 t1 ... un tn) borrows(Y) consumes(Z)
+
+X |- borrow e: shared tuple(u1 t1 ... ui ti ... un tn) borrows(Y) consumes(Z)
+-----------------------------------------------------------------------------
+X |- c e.i: share_as(shared, ui) ti borrows(Y) consumes(Z)
+
+X |- consume e0: linear tuple(u1 t1 ... un tn) borrows(Y0) consumes(Z0)
+X, x1 -> u1 t1, ..., xn -> un tn |- c ex: ux tx borrows(Yx) consumes(Zx)
+u1 = linear iff x1 in Zx ... un = linear iff xn in Zx
+Xs = {x1, ..., xn}
+disjoint(Xs, Yx)
+disjoint(Z0, Zx) and disjoint(Z0, Yx)
+-------------------------------------------------------------------------------------------------------------
+X |- c let tuple(x1 ... xn) = e0 in ex: ux tx borrows((Y0 - Zx) union (Yx - Xs)) consumes(Z0 union (Zx - Xs))
+
+X |- c new_region(): linear region borrows() consumes()
+
+X |- consume e: linear region borrows(Y) consumes(Z)
+----------------------------------------------------------
+X |- c free_region(e): ordinary int borrows(Y) consumes(Z)
+
+StructType(S) = (u1 t1, ..., un tn)
+X |- consume e0: linear region borrows(Y0) consumes(Z0)
+X |- consume e1: u1 t1 borrows(Y1) consumes(Z1)
+...
+X |- consume en: un tn borrows(Yn) consumes(Zn)
+Z = Z0 union Z1 union ... union Zn
+Y = Y0 union Y1 union ... union Yn
+disjoint(Z0, Z1, ..., Zn)
+disjoint(Y, Z)
+---------------------------------------------------------------------------------------------------
+X |- c alloc S(e1 ... en) @ e0: linear tuple(ordinary ref(S), linear region) borrows(Y) consumes(Z)
+
+StructType(S) = (u1 t1, ..., ui ti, ..., un tn)
+X |- borrow e0: shared region borrows(Y0) consumes(Z0)
+X |- borrow e1: ordinary ref(S) borrows(Y1) consumes(Z1)
+Z = Z0 union Z1
+Y = Y0 union Y1
+disjoint(Z0, Z1)
+disjoint(Y, Z)
+----------------------------------------------------------------------
+X |- c read(e1.i) @ e0: share_as(shared, ui) ti borrows(Y) consumes(Z)
+
+StructType(S) = (u1 t1, ..., ordinary ti, ..., un tn)
+X |- consume e0: linear region borrows(Y0) consumes(Z0)
+X |- borrow e1: ordinary ref(S) borrows(Y1) consumes(Z1)
+X |- borrow e2: ordinary ti borrows(Yx) consumes(Z2)
+Z = Z0 union Z1 union Z2
+Y = Y0 union Y1 union Yx
+disjoint(Z0, Z1, Z2)
+disjoint(Y, Z)
+-------------------------------------------------------------------
+X |- c write(e1.i := e2) @ e0: linear region borrows(Y) consumes(Z)
+
+StructType(S) = (u1 t1, ..., linear ti, ..., un tn)
+X |- consume e0: linear region borrows(Y0) consumes(Z0)
+X |- borrow e1: ordinary ref(S) borrows(Y1) consumes(Z1)
+X |- consume e2: linear ti borrows(Yx) consumes(Z2)
+Z = Z0 union Z1 union Z2
+Y = Y0 union Y1 union Yx
+disjoint(Z0, Z1, Z2)
+disjoint(Y, Z)
+-------------------------------------------------------------------------------------------
+X |- c swap(e1.i := e2) @ e0: linear tuple(linear ti, linear region) borrows(Y) consumes(Z)
+
+=====================================================================
+Theorem: Type inference soundness
+If X |- c e: u t borrows() consumes(domain(~X))
+Then {}; {}; X |- e: u t
+
+Proof by induction on X |- c e: u t borrows() consumes(domain(~X))
+
+(Note: it may appear surprising that we do induction with borrows() rather than borrows(Y).
+This works because we use "Lemma: Eliminate borrow" to remove borrowing as we find it.)
+(Also note that we use "Lemma: Inference strengthening" to prune X before invoking induction,
+so that by the time we reach the base cases, X only contains the minimum needed linear variables.)
+
+CASE x
+  case
+      X = X', x -> linear t
+      X', x -> linear t |- consume x: linear t borrows() consumes(x)
+      where domain(~(X', x -> linear t)) = {x}
+    Since domain(~(X', x -> linear t)) = {x} we know X' = !X'
+    By typing rule:
+      {}; {}; !X', x -> linear t |- x: linear t
+  case
+      X = X', x -> linear t
+      X', x -> linear t |- borrow x: shared t borrows(x) consumes()
+      where domain(~(X', x -> linear t)) = {}
+    Since x in domain(~(X', x -> linear t)), this case can't happen.
+  case
+      X = X', x -> shared t
+      X', x -> shared t |- borrow x: shared t borrows() consumes()
+      where domain(~(X', x -> shared t)) = {}
+    Since x in domain(~(X', x -> shared t)) we know X' = !X'
+    By typing rule:
+      {}; {}; !X', x -> shared t |- x: shared t
+  case
+      X = X', x -> ordinary t
+      X', x -> ordinary t |- c x: ordinary t borrows() consumes()
+      where domain(~(X', x -> ordinary t)) = {}
+    Since x in domain(~(X', x -> ordinary t)) we know X' = !X'
+    By typing rule:
+      {}; {}; !X', x -> ordinary t |- x: ordinary t
+
+CASE i
+  By inference rule for i:
+    X |- c i: ordinary int borrows() consumes()
+  Since domain(~X) = {}, we know X = !X
+  By typing rule:
+    {}; {}; !X |- i: ordinary int
+
+CASE null
+  By inference rule for null:
+    X |- c null: ordinary ref(S) borrows() consumes()
+  Since domain(~X) = {}, we know X = !X
+  By typing rule:
+    {}; {}; !X |- null: ordinary ref(S)
+
+CASE e1 + e2:
+  By inference rule for e1 + e2:
+    X |- borrow e1: ordinary int borrows(Y1) consumes(Z1)
+    X |- borrow e2: ordinary int borrows(Yx) consumes(Z2)
+    Z = Z1 union Z2
+    Y = Y1 union Yx
+    disjoint(Z1, Z2)
+    disjoint(Y, Z)
+    -----------------------------------------------------
+    X |- c e1 + e2: ordinary int borrows(Y) consumes(Z)
+    where:
+      {} = Y = Y1 union Yx, so Y1 = Yx = {}
+      domain(~X) = Z = Z1 union Z2
+  Simplifying:
+    X |- borrow e1: ordinary int borrows() consumes(Z1)
+    X |- borrow e2: ordinary int borrows() consumes(Z2)
+  Choose X1, X2 such that X = X1 # X2 and domain(~X1) = Z1 and domain(~X2) = Z2:
+    X |- borrow e1: ordinary int borrows() consumes(domain(~X1))
+    X |- borrow e2: ordinary int borrows() consumes(domain(~X2))
+  By Lemma: Inference strengthening:
+    X1 |- borrow e1: ordinary int borrows() consumes(domain(~X1))
+    X2 |- borrow e2: ordinary int borrows() consumes(domain(~X2))
+  By induction:
+    {}; {}; X1 |- e1: ordinary int
+    {}; {}; X2 |- e1: ordinary int
+  By typing rule for e1 + e2:
+    {}; {}; X1 |- e1: ordinary int
+    {}; {}; X2 |- e2: ordinary int
+    ----------------------------------------
+    {}; {}; X1 # X2 |- e1 + e2: ordinary int
+
+CASE e1; e2:
+  By inference rule for e1; e2:
+    X |- borrow e1: u1 t1 borrows(Y1) consumes(Z1)
+    X |- c e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 != linear
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    ----------------------------------------------------------------------
+    X |- c e1; e2: u2 t2 borrows((Y1 - Z2) union Yx) consumes(Z1 union Z2)
+    where:
+      {} = Y = (Y1 - Z2) union Yx, so Yx = {} and Y1 subsetof Z2
+      domain(~X) = Z = Z1 union Z2
+  Since Y1 subsetof Z2 and disjoint(Z1, Z2), we also know disjoint(Z1, Y1)
+  Simplifying:
+    X |- borrow e1: u1 t1 borrows(Y1) consumes(Z1)
+    X |- c e2: u2 t2 borrows() consumes(Z2)
+  Choose X1, X2, Xb such that:
+    X = (X1 # X2), linear(Xb)
+    domain(~X1) = Z1
+    domain(linear(Xb)) = Y1 (this is possible because disjoint(Z1, Y1))
+    domain(~X2) = domain(~X) - domain(~X1) - domain(linear(Xb))
+  Simplifying:
+    domain(~X2) = domain(~X) - Z1 - Y1
+    domain(~X2) = (Z1 union Z2) - Z1 - Y1
+    domain(~X2) = Z2 - Y1
+  And since Y1 subsetof Z2:
+    domain(~X2) union Y1 = Z2
+  By Lemma: Inference strengthening:
+    X1, linear(Xb) |- borrow e1: u1 t1 borrows(Y1) consumes(Z1)
+      where we use disjoint(domain(~X2), Y1 union Z1)
+    X2, linear(Xb) |- c e2: u2 t2 borrows() consumes(Z2)
+      where we use disjoint(domain(~X1), Z2)
+  Rewriting:
+    X1, linear(Xb) |- borrow e1: u1 t1 borrows(domain(linear(Xb))) consumes(domain(~X1))
+    X2, linear(Xb) |- c e2: u2 t2 borrows() consumes(domain(~X2) union domain(linear(Xb)))
+  We know disjoint(domain(linear(Xb)), domain(~X1))
+  By Lemma: Eliminate borrow, for each x in domain(linear(Xb)):
+    X1, shared(Xb) |- borrow e1: u1 t1 borrows() consumes(domain(~X1))
+  Rewriting:
+    X1, shared(Xb) |- borrow e1: u1 t1 borrows() consumes(domain(~(X1, shared(Xb))))
+    X2, linear(Xb) |- c e2: u2 t2 borrows() consumes(domain(~(X2, linear(Xb))))
+  By induction:
+    {}; {}; X1, shared(Xb) |- e1: u1 t1
+    {}; {}; X2, linear(Xb) |- e2: u2 t2
+  By typing rule for e1; e2:
+    u1 != linear
+    {}; {}; X1, shared(Xb) |- e1: u1 t1
+    {}; {}; X2, linear(Xb) |- e2: u2 t2
+    ----------------------------------------------
+    {}; {}; (X1 # X2), linear(Xb) |- e1; e2: u2 t2
+  Simplifying:
+    {}; {}; X |- e1; e2: u t
+
+CASE let u1 x = e1 in e2
+  By inference rule for let u1 x = e1 in e2:
+    c1 = consume iff u1 = linear
+    X |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+    X, x -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 = linear iff x in Z2
+    x not in Yx
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    If u1 = shared then disjoint(Y1, Z2)
+    ----------------------------------------------------------------------------------------------------
+    X |- c2 let u1 x = e1 in e2: u2 t2 borrows((Y1 - Z2) union (Yx - {x})) consumes(Z1 union (Z2 - {x}))
+    where:
+      {} = (Y1 - Z2) union (Yx - {x}), so:
+        Y1 - Z2 = {}, so Y1 subsetof Z2
+        Yx - {x} = {}, so Yx = {}, since x not in Yx
+      domain(~X) = Z1 union (Z2 - {x})
+  Since Y1 subsetof Z2 and disjoint(Z1, Z2), we also know disjoint(Z1, Y1)
+  Simplifying:
+    X |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+    X, x -> u1 t1 |- c2 e2: u2 t2 borrows() consumes(Z2)
+  Choose X1, X2, Xb such that:
+    X = (X1 # X2), linear(Xb)
+    domain(~X1) = Z1
+    domain(linear(Xb)) = Y1 (this is possible because disjoint(Z1, Y1))
+    domain(~X2) = domain(~X) - domain(~X1) - domain(linear(Xb))
+  Simplifying:
+    domain(~X2) = domain(~X) - Z1 - Y1
+    domain(~X2) = (Z1 union (Z2 - {x})) - Z1 - Y1
+    domain(~X2) = (Z2 - {x}) - Y1
+  And since Y1 subsetof Z2 and u1 = linear iff x in Z2:
+    domain(~X2) union Y1 union domain(~{x -> u1 t1}) = Z2
+  By Lemma: Inference strengthening:
+    X1, linear(Xb) |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+      where we use disjoint(domain(~X2), Y1 union Z1)
+    X2, linear(Xb), x -> u1 t1 |- c2 e2: u2 t2 borrows() consumes(Z2)
+      where we use disjoint(domain(~X1), Z2)
+  Rewriting:
+    X1, linear(Xb) |- c1 e1: u1 t1 borrows(domain(linear(Xb))) consumes(domain(~X1))
+    X2, linear(Xb), x -> u1 t1 |- c2 e2: u2 t2 borrows() consumes(domain(~X2) union domain(linear(Xb)) union domain(~{x -> u1 t1}))
+  We know disjoint(domain(linear(Xb)), domain(~X1))
+  By Lemma: Eliminate borrow, for each x in domain(linear(Xb)):
+    X1, shared(Xb) |- c1 e1: u1 t1 borrows() consumes(domain(~X1))
+  Rewriting:
+    X1, shared(Xb) |- c1 e1: u1 t1 borrows() consumes(domain(~(X1, shared(Xb))))
+    X2, linear(Xb), x -> u1 t1 |- c2 e2: u2 t2 borrows() consumes(domain(~(X2, linear(Xb), x -> u1 t1)))
+  By induction:
+    {}; {}; X1, shared(Xb) |- e1: u1 t1
+    {}; {}; X2, linear(Xb), x -> u1 t1 |- e2: u2 t2
+  If u1 = shared then:
+    disjoint(Y1, Z2) (by inference rule above)
+    and since Y1 subsetof Z2, we know Y1 = {}
+    and since Y1 = domain(linear(Xb)), we know Xb = {}
+  By typing rule:
+    If u1 = shared then Xb = {}
+    {}; {}; X1, shared(Xb)             |- e1: u1 t1
+    {}; {}; X2, linear(Xb), x -> u1 t1 |- e2: u2 t2
+    ------------------------------------------------------------
+    {}; {}; (X1 # X2), linear(Xb) |- let u1 x = e1 in e2: u2 t2
+
+CASE tuple(e1 ... en)
+  By inference rule for tuple(e1 ... en):
+    u != ordinary
+    c = consume iff u = linear
+    X |- c e1: u1' t1 borrows(Y1) consumes(Z1)
+    ...
+    X |- c en: un' tn borrows(Yn) consumes(Zn)
+    Z = Z1 union ... union Zn
+    Y = Y1 union ... union Yn
+    disjoint(Z1 ... Zn)
+    disjoint(Y, Z)
+    u1' = share_as(u, u1)
+    ...
+    un' = share_as(u, un)
+    --------------------------------------------------------------------------
+    X |- c tuple(e1 ... en): u tuple(u1 t1 ... un tn) borrows(Y) consumes(Z)
+    where:
+      {} = Y = Y1 union ... union Yn, so Y1 = {} and ... and Yn = {}
+      domain(~X) = Z = Z1 union ... union Zn
+  Simplifying:
+    X |- c e1: u1' t1 borrows() consumes(Z1)
+    ...
+    X |- c en: un' tn borrows() consumes(Zn)
+  Choose X1 ... Xn such that X = X1 # ... # Xn and domain(~X1) = Z1 and ... and domain(~Xn) = Zn:
+    X |- c e1: u1' t1 borrows() consumes(domain(~X1))
+    ...
+    X |- c en: un' tn borrows() consumes(domain(~Xn))
+  By Lemma: Inference strengthening:
+    X1 |- c e1: u1' t1 borrows() consumes(domain(~X1))
+    ...
+    Xn |- c en: un' tn borrows() consumes(domain(~Xn))
+  By induction:
+    {}; {}; X1 |- e1: u1' t1
+    ...
+    {}; {}; Xn |- en: un' tn
+  By typing rule:
+    u != ordinary
+    {}; {}; X1 |- e1: share_as(u, u1) t1
+    ...
+    {}; {}; Xn |- en: share_as(u, un) tn
+    -------------------------------------------------------------------
+    {}; {}; X1 # ... # Xn |- tuple(e1 ... en): u tuple(u1 t1 ... un tn)
+
+CASE e.i
+  By inference rule for e.i:
+    X |- borrow e: shared tuple(u1 t1 ... ui ti ... un tn) borrows(Y) consumes(Z)
+    -----------------------------------------------------------------------------
+    X |- c e.i: share_as(shared, ui) ti borrows(Y) consumes(Z)
+    where {} = Y and domain(~X) = Z
+  By induction:
+    {}; {}; X |- e: shared tuple(u1 t1 ... ui ti ... un tn)
+  By typing rule:
+    {}; {}; X |- e: shared tuple(u1 t1 ... ui ti ... un tn)
+    -------------------------------------------------------
+    {}; {}; X |- e.i: share_as(shared, ui) ti
+
+CASE let tuple(x1 ... xn) = e1 in e2
+  By inference rule for let tuple(x1 ... xn) = e1 in e2:
+    X |- consume e0: linear tuple(u1 t1 ... un tn) borrows(Y0) consumes(Z0)
+    X, x1 -> u1 t1, ..., xn -> un tn |- c ex: ux tx borrows(Yx) consumes(Zx)
+    u1 = linear iff x1 in Zx ... un = linear iff xn in Zx
+    Xs = {x1, ..., xn}
+    disjoint(Xs, Yx)
+    disjoint(Z0, Zx) and disjoint(Z0, Yx)
+    -------------------------------------------------------------------------------------------------------------
+    X |- c let tuple(x1 ... xn) = e0 in ex: ux tx borrows((Y0 - Zx) union (Yx - Xs)) consumes(Z0 union (Zx - Xs))
+    where:
+      {} = (Y0 - Zx) union (Yx - Xs), so:
+        Y0 - Zx = {}, so Y0 subsetof Zx
+        Yx - Xs = {}, so Yx = {}, since disjoint(Xs, Yx)
+      domain(~X) = Z0 union (Zx - Xs)
+  Since Y0 subsetof Zx and disjoint(Z0, Zx), we also know disjoint(Z0, Y0)
+  Simplifying:
+    X |- consume e0: linear tuple(u1 t1 ... un tn) borrows(Y0) consumes(Z0)
+    X, x1 -> u1 t1, ..., xn -> un tn |- c ex: ux tx borrows() consumes(Zx)
+  Choose X0, Xx, Xb such that:
+    X = (X0 # Xx), linear(Xb)
+    domain(~X0) = Z0
+    domain(linear(Xb)) = Y0 (this is possible because disjoint(Z0, Y0))
+    domain(~Xx) = domain(~X) - domain(~X0) - domain(linear(Xb))
+  Simplifying:
+    domain(~Xx) = domain(~X) - Z0 - Y0
+    domain(~Xx) = (Z0 union (Zx - Xs)) - Z0 - Y0
+    domain(~Xx) = (Zx - Xs) - Y0
+  And since Y0 subsetof Zx and u1 = linear iff x1 in Zx and ... and un = linear iff xn in Zx:
+    domain(~Xx) union Y0 union domain(~{x1 -> u1 t1, ..., xn -> un tn}) = Zx
+  By Lemma: Inference strengthening:
+    X0, linear(Xb) |- consume e0: linear tuple(u1 t1 ... un tn) borrows(Y0) consumes(Z0)
+      where we use disjoint(domain(~Xx), Y0 union Z0)
+    Xx, linear(Xb), x1 -> u1 t1, ..., xn -> un tn |- c ex: ux tx borrows() consumes(Zx)
+      where we use disjoint(domain(~X0), Zx)
+  Rewriting:
+    X0, linear(Xb) |- consume e0: linear tuple(u1 t1 ... un tn) borrows(domain(linear(Xb))) consumes(domain(~X0))
+    Xx, linear(Xb), x1 -> u1 t1, ..., xn -> un tn |- c ex: ux tx borrows() consumes(domain(~Xx) union domain(linear(Xb)) union domain(~{x1 -> u1 t1, ..., xn -> un tn}))
+  We know disjoint(domain(linear(Xb)), domain(~X0))
+  By Lemma: Eliminate borrow, for each x in domain(linear(Xb)):
+    X0, shared(Xb) |- consume e0: linear tuple(u1 t1 ... un tn) borrows() consumes(domain(~X0))
+  Rewriting:
+    X0, shared(Xb) |- consume e0: linear tuple(u1 t1 ... un tn) borrows() consumes(domain(~(X0, shared(Xb))))
+    Xx, linear(Xb), x1 -> u1 t1, ..., xn -> un tn |- c ex: ux tx borrows() consumes(domain(~(Xx, linear(Xb), x1 -> u1 t1, ..., xn -> un tn)))
+  By induction:
+    {}; {}; X0, shared(Xb) |- e0: linear tuple(u1 t1 ... un tn)
+    {}; {}; Xx, linear(Xb), x1 -> u1 t1, ..., xn -> un tn |- ex: ux tx
+  By typing rule:
+    {}; {}; X0, shared(Xb) |- e0: linear tuple(u1 t1 ... un tn)
+    {}; {}; Xx, linear(Xb), x1 -> u1 t1, ..., xn -> un tn |- ex: ux tx
+    -----------------------------------------------------------------------
+    {}; {}; (X0 # Xx), linear(Xb) |- let tuple(x1 ... xn) = e0 in ex: ux tx
+
+CASE new_region()
+  By inference rule for new_region:
+    X |- c new_region(): linear region borrows() consumes()
+  Since domain(~X) = {}, we know X = !X
+  By typing rule:
+    !X |- new_region(): linear region
+
+CASE free_region(e)
+  By inference rule for free_region:
+    X |- consume e: linear region borrows(Y) consumes(Z)
+    ----------------------------------------------------------
+    X |- c free_region(e): ordinary int borrows(Y) consumes(Z)
+    where {} = Y and domain(~X) = Z
+  By induction:
+    {}; {}; X |- e: linear region
+  By typing rule:
+    {}; {}; X |- e: linear region
+    -----------------------------------------
+    {}; {}; X |- free_region(e): ordinary int
+
+CASE alloc S(e1 ... en) @ e0
+  By inference rule for alloc:
+    StructType(S) = (u1 t1, ..., un tn)
+    X |- consume e0: linear region borrows(Y0) consumes(Z0)
+    X |- consume e1: u1 t1 borrows(Y1) consumes(Z1)
+    ...
+    X |- consume en: un tn borrows(Yn) consumes(Zn)
+    Z = Z0 union Z1 union ... union Zn
+    Y = Y0 union Y1 union ... union Yn
+    disjoint(Z0, Z1, ..., Zn)
+    disjoint(Y, Z)
+    ---------------------------------------------------------------------------------------------------
+    X |- c alloc S(e1 ... en) @ e0: linear tuple(ordinary ref(S), linear region) borrows(Y) consumes(Z)
+    where:
+      {} = Y = Y0 union Y1 union ... union Yn, so Y0 = {} and Y1 = {} and ... and Yn = {}
+      domain(~X) = Z = Z0 union Z1 union ... union Zn
+  Simplifying:
+    X |- consume e0: linear region borrows() consumes(Z0)
+    X |- consume e1: u1 t1 borrows() consumes(Z1)
+    ...
+    X |- consume en: un tn borrows() consumes(Zn)
+  Choose X0, X1 ... Xn such that X = X0 # X1 # ... # Xn and domain(~X0) = Z0 and domain(~X1) = Z1 and ... and domain(~Xn) = Zn:
+    X |- consume e0: linear region borrows() consumes(domain(~X0))
+    X |- consume e1: u1 t1 borrows() consumes(domain(~X1))
+    ...
+    X |- consume en: un tn borrows() consumes(domain(~Xn))
+  By Lemma: Inference strengthening:
+    X0 |- consume e0: linear region borrows() consumes(domain(~X0))
+    X1 |- consume e1: u1 t1 borrows() consumes(domain(~X1))
+    ...
+    Xn |- consume en: un tn borrows() consumes(domain(~Xn))
+  By induction:
+    {}; {}; X0 |- e0: linear region
+    {}; {}; X1 |- e1: u1 t1
+    ...
+    {}; {}; Xn |- en: un tn
+  By typing rule:
+    StructType(S) = (u1 t1, ..., un tn)
+    {}; {}; X0 |- e0: linear region
+    {}; {}; X1 |- e1: u1 t1
+    ...
+    {}; {}; Xn |- en: un tn
+    ---------------------------------------------------------------------------------------------------
+    {}; {}; X0 # X1 # ... # Xn |- alloc S(e1 ... en) @ e0: linear tuple(ordinary ref(S), linear region)
+
+CASE read(e1.i) @ e0
+  By inference rule for read:
+    StructType(S) = (u1 t1, ..., ui ti, ..., un tn)
+    X |- borrow e0: shared region borrows(Y0) consumes(Z0)
+    X |- borrow e1: ordinary ref(S) borrows(Y1) consumes(Z1)
+    Z = Z0 union Z1
+    Y = Y0 union Y1
+    disjoint(Z0, Z1)
+    disjoint(Y, Z)
+    ----------------------------------------------------------------------
+    X |- c read(e1.i) @ e0: share_as(shared, ui) ti borrows(Y) consumes(Z)
+    where:
+      {} = Y = Y0 union Y1, so Y0 = {} and Y1 = {}
+      domain(~X) = Z = Z0 union Z1
+  Simplifying:
+    X |- borrow e0: shared region borrows() consumes(Z0)
+    X |- borrow e1: ordinary ref(S) borrows() consumes(Z1)
+  Choose X0, X1 such that X = X0 # X1 and domain(~X0) = Z0 and domain(~X1) = Z1:
+    X |- borrow e0: shared region borrows() consumes(domain(~X0))
+    X |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+  By Lemma: Inference strengthening:
+    X0 |- borrow e0: shared region borrows() consumes(domain(~X0))
+    X1 |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+  By induction:
+    {}; {}; X0 |- e0: shared region
+    {}; {}; X1 |- e1: ordinary ref(S)
+  By typing rule:
+    StructType(S) = (u1 t1, ..., ui ti, ..., un tn)
+    {}; {}; X0 |- e0: shared region
+    {}; {}; X1 |- e1: ordinary ref(S)
+    -----------------------------------------------------------
+    {}; {}; X0 # X1 |- read(e1.i) @ e0: share_as(shared, ui) ti
+
+CASE write(e1.i := e2) @ e0
+  By inference rule for write:
+    StructType(S) = (u1 t1, ..., ordinary ti, ..., un tn)
+    X |- consume e0: linear region borrows(Y0) consumes(Z0)
+    X |- borrow e1: ordinary ref(S) borrows(Y1) consumes(Z1)
+    X |- borrow e2: ordinary ti borrows(Yx) consumes(Z2)
+    Z = Z0 union Z1 union Z2
+    Y = Y0 union Y1 union Yx
+    disjoint(Z0, Z1, Z2)
+    disjoint(Y, Z)
+    -------------------------------------------------------------------
+    X |- c write(e1.i := e2) @ e0: linear region borrows(Y) consumes(Z)
+    where:
+      {} = Y = Y0 union Y1 union Yx, so Y0 = {} and Y1 = {} and Yx = {}
+      domain(~X) = Z = Z0 union Z1 union Z2
+  Simplifying:
+    X |- consume e0: linear region borrows() consumes(Z0)
+    X |- borrow e1: ordinary ref(S) borrows() consumes(Z1)
+    X |- borrow e2: ordinary ti borrows() consumes(Z2)
+  Choose X0, X1, X2 such that X = X0 # X1 # X2 and domain(~X0) = Z0 and domain(~X1) = Z1 and domain(~X2) = Z2:
+    X |- consume e0: linear region borrows() consumes(domain(~X0))
+    X |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+    X |- borrow e2: ordinary ti borrows() consumes(domain(~X2))
+  By Lemma: Inference strengthening:
+    X0 |- consume e0: linear region borrows() consumes(domain(~X0))
+    X1 |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+    X2 |- borrow e2: ordinary ti borrows() consumes(domain(~X2))
+  By induction:
+    {}; {}; X0 |- e0: linear region
+    {}; {}; X1 |- e1: ordinary ref(S)
+    {}; {}; X2 |- e2: ordinary ti
+  By typing rule:
+    StructType(S) = (u1 t1, ..., ordinary ti, ..., un tn)
+    {}; {}; X0 |- e0: linear region
+    {}; {}; X1 |- e1: ordinary ref(S)
+    {}; {}; X2 |- e2: ordinary ti
+    -------------------------------------------------------------
+    {}; {}; X0 # X1 # X2 |- write(e1.i := e2) @ e0: linear region
+
+CASE swap(e1.i := e2) @ e0
+  By inference rule for swap:
+    StructType(S) = (u1 t1, ..., linear ti, ..., un tn)
+    X |- consume e0: linear region borrows(Y0) consumes(Z0)
+    X |- borrow e1: ordinary ref(S) borrows(Y1) consumes(Z1)
+    X |- consume e2: linear ti borrows(Yx) consumes(Z2)
+    Z = Z0 union Z1 union Z2
+    Y = Y0 union Y1 union Yx
+    disjoint(Z0, Z1, Z2)
+    disjoint(Y, Z)
+    -------------------------------------------------------------------------------------------
+    X |- c swap(e1.i := e2) @ e0: linear tuple(linear ti, linear region) borrows(Y) consumes(Z)
+    where:
+      {} = Y = Y0 union Y1 union Yx, so Y0 = {} and Y1 = {} and Yx = {}
+      domain(~X) = Z = Z0 union Z1 union Z2
+  Simplifying:
+    X |- consume e0: linear region borrows() consumes(Z0)
+    X |- borrow e1: ordinary ref(S) borrows() consumes(Z1)
+    X |- consume e2: linear ti borrows() consumes(Z2)
+  Choose X0, X1, X2 such that X = X0 # X1 # X2 and domain(~X0) = Z0 and domain(~X1) = Z1 and domain(~X2) = Z2:
+    X |- consume e0: linear region borrows() consumes(domain(~X0))
+    X |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+    X |- consume e2: linear ti borrows() consumes(domain(~X2))
+  By Lemma: Inference strengthening:
+    X0 |- consume e0: linear region borrows() consumes(domain(~X0))
+    X1 |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+    X2 |- consume e2: linear ti borrows() consumes(domain(~X2))
+  By induction:
+    {}; {}; X0 |- e0: linear region
+    {}; {}; X1 |- e1: ordinary ref(S)
+    {}; {}; X2 |- e2: linear ti
+  By typing rule:
+    StructType(S) = (u1 t1, ..., linear ti, ..., un tn)
+    {}; {}; X0 |- e0: linear region
+    {}; {}; X1 |- e1: ordinary ref(S)
+    {}; {}; X2 |- e2: linear ti
+    -------------------------------------------------------------------------------------
+    {}; {}; X0 # X1 # X2 |- swap(e1.i := e2) @ e0: linear tuple(linear ti, linear region)
+
+=====================================================================
+Theorem: Type inference completeness
+If {}; {}; X |- e: u t
+and if u = linear then c = consume
+and if u = shared then c = borrow
+Then X |- c e: u t borrows() consumes(domain(~X))
+
+(Note: it may appear surprising that we do induction with borrows() rather than borrows(Y).
+This works because we use "Lemma: Introduce borrow" to retroactively add borrowing as we discover the need for it.)
+
+CASE x
+  By typing rule for x:
+    X = !X', x -> u t
+    {}; {}; !X', x -> u t |- x: u t
+  If u = linear:
+    By inference rule:
+      !X', x -> linear t |- consume x: linear t borrows() consumes(x)
+  If u = shared:
+    By inference rule:
+      !X', x -> shared t |- borrow x: shared t borrows() consumes()
+  If u = ordinary:
+    By inference rule:
+      !X', x -> ordinary t |- c x: ordinary t borrows() consumes()
+
+CASE i
+  By typing rule for i:
+    X = !X
+    {}; {}; !X |- i: ordinary int
+  By inference rule for i:
+    X |- c i: ordinary int borrows() consumes()
+
+CASE l
+  By typing rule for l:
+    {}; {}; X = !C, l -> S
+    !C, l -> S |- l: ordinary ref(S)
+  But it's not possible to have {}; {}; X = !C, l -> S
+    because {} does not contain l -> S
+  So this case can't happen.
+
+CASE null
+  By typing rule for null:
+    X = !X
+    {}; {}; !X |- null: ordinary ref(S)
+  By inference rule for null:
+    X |- c null: ordinary ref(S) borrows() consumes()
+
+CASE r d
+  By typing rule for r d:
+    {}; {}; X = L; R # {r -> u}; !X
+  But it's not possible to have {}; {}; X = L; R # {r -> u}; !X
+    because {} does not contain {r -> u}
+  So this case can't happen.
+
+CASE e1 + e2
+  By typing rule for e1 + e2:
+    X = X1 # X2
+    {}; {}; X1 |- e1: ordinary int
+    {}; {}; X2 |- e2: ordinary int
+    ----------------------------------------
+    {}; {}; X1 # X2 |- e1 + e2: ordinary int
+  Choose c1 = c2 = borrow (we can choose this because u = u1 = u2 = ordinary)
+  By induction:
+    X1 |- borrow e1: ordinary int borrows() consumes(domain(~X1))
+    X2 |- borrow e2: ordinary int borrows() consumes(domain(~X2))
+  By Lemma: Inference weakening:
+    X |- borrow e1: ordinary int borrows() consumes(domain(~X1))
+    X |- borrow e2: ordinary int borrows() consumes(domain(~X2))
+  Let:
+    Z1 = domain(~X1)
+    Z2 = domain(~X2)
+    Z = Z1 union Z2 = domain(~X1) union domain(~X2) = domain(~X)
+    Y = {}
+  Since X = X1 # X2, we know disjoint(Z1, Z2)
+  Since Y = {}, we know disjoint(Y, Z)
+  By inference rule for e1 + e2:
+    X |- borrow e1: ordinary int borrows(Y1) consumes(Z1)
+    X |- borrow e2: ordinary int borrows(Yx) consumes(Z2)
+    Z = Z1 union Z2
+    Y = Y1 union Yx
+    disjoint(Z1, Z2)
+    disjoint(Y, Z)
+    -----------------------------------------------------
+    X |- c e1 + e2: ordinary int borrows(Y) consumes(Z)
+  Simplifying:
+    X |- c e1 + e2: ordinary int borrows() consumes(Z)
+    X |- c e1 + e2: ordinary int borrows() consumes(domain(~X))
+
+CASE e1; e2
+  By typing rule for e1; e2:
+    X = (X1 # X2), linear(Xb)
+    u1 != linear
+    {}; {}; X1, shared(Xb) |- e1: u1 t1
+    {}; {}; X2, linear(Xb) |- e2: u2 t2
+    ----------------------------------------------
+    {}; {}; (X1 # X2), linear(Xb) |- e1; e2: u2 t2
+  choose c1 = borrow (we can choose this because u1 != linear)
+  choose c2 = c (we can choose this because u2 = u)
+  By induction (and using ~shared(Xb) = {} and ~linear(Xb) = linear(Xb)):
+    X1, shared(Xb) |- borrow e1: u1 t1 borrows() consumes(domain(~X1))
+    X2, linear(Xb) |- c e2: u2 t2 borrows() consumes(domain(~X2) union domain(linear(Xb)))
+  By Lemma: Introduce borrow, for each x in Xb:
+    X1, linear(Xb) |- borrow e1: u1 t1 borrows(Y1) consumes(domain(~X1))
+    where Y1 subset of domain(linear(Xb))
+  By Lemma: Inference weakening:
+    X |- borrow e1: u1 t1 borrows(Y1) consumes(domain(~X1))
+    X |- c e2: u2 t2 borrows() consumes(domain(~X2) union domain(linear(Xb)))
+  Let:
+    Z1 = domain(~X1)
+    Z2 = domain(~X2) union domain(linear(Xb))
+    Yx = {}
+    Z1 union Z2 = domain(~X1) union domain(~X2) union domain(linear(Xb)) = domain(~X)
+  Since X = (X1 # X2), linear(Xb), we know disjoint(Z1, Z2)
+  Since Yx = {}, we know disjoint(Z1, Yx)
+  By inference rule for e1; e2:
+    X |- borrow e1: u1 t1 borrows(Y1) consumes(Z1)
+    X |- c e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 != linear
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    ----------------------------------------------------------------------
+    X |- c e1; e2: u2 t2 borrows((Y1 - Z2) union Yx) consumes(Z1 union Z2)
+  Simplifying:
+    X |- c e1; e2: u2 t2 borrows(Y1 - Z2) consumes(domain(~X))
+  Since Y1 subset of domain(linear(Xb)), which is subset of Z2, we know Y1 - Z2 = {}, so:
+    X |- c e1; e2: u2 t2 borrows() consumes(domain(~X))
+
+CASE let u x = e1 in e2
+  Alpha-rename so that x not in X
+  By typing rule for let u x = e1 in e2:
+    X = (X1 # X2), linear(Xb)
+    If u1 = shared then Xb = {}
+    {}; {}; X1, shared(Xb)             |- e1: u1 t1
+    {}; {}; X2, linear(Xb), x -> u1 t1 |- e2: u2 t2
+    -----------------------------------------------------------
+    {}; {}; (X1 # X2), linear(Xb) |- let u1 x = e1 in e2: u2 t2
+  If u1 = linear, choose c1 = consume
+  If u1 != linear, choose c1 = borrow
+  Choose c2 = c (we can choose this because u2 = u)
+  By induction (and using ~shared(Xb) = {} and ~linear(Xb) = linear(Xb)):
+    X1, shared(Xb) |- c1 e1: u1 t1 borrows() consumes(domain(~X1))
+    X2, linear(Xb), x -> u1 t1 |- c e2: u2 t2 borrows() consumes(domain(~X2) union domain(linear(Xb)) union domain(~{x -> u1 t1}))
+  By Lemma: Introduce borrow, for each x in Xb:
+    X1, linear(Xb) |- c1 e1: u1 t1 borrows(Y1) consumes(domain(~X1))
+    where Y1 subset of domain(linear(Xb))
+  By Lemma: Inference weakening:
+    X |- c1 e1: u1 t1 borrows(Y1) consumes(domain(~X1))
+    X, x -> u1 t1 |- c e2: u2 t2 borrows() consumes(domain(~X2) union domain(linear(Xb)) union domain(~{x -> u1 t1}))
+  Let:
+    Z1 = domain(~X1)
+    Z2 = domain(~X2) union domain(linear(Xb)) union domain(~{x -> u1 t1})
+    Yx = {}
+    Z1 union (Z2 - {x}) = domain(~X1) union domain(~X2) union domain(linear(Xb)) = domain(~X)
+  Since X = (X1 # X2), linear(Xb), and x not in X, we know disjoint(Z1, Z2)
+  Since Yx = {}, we know disjoint(Z1, Yx)
+  If u1 = shared:
+    Xb = {}
+    From above, we know Y1 subsetof domain(linear(Xb)), so Y1 = {}
+    Therefore, disjoint(Y1, Z2)
+  By inference rule:
+    c1 = consume iff u1 = linear
+    X |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+    X, x -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 = linear iff x in Z2
+    x not in Yx
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    If u1 = shared then disjoint(Y1, Z2)
+    ----------------------------------------------------------------------------------------------------
+    X |- c2 let u1 x = e1 in e2: u2 t2 borrows((Y1 - Z2) union (Yx - {x})) consumes(Z1 union (Z2 - {x}))
+  Simplifying:
+    X |- c2 let u1 x = e1 in e2: u2 t2 borrows((Y1 - Z2) union (Yx - {x})) consumes(domain(~X))
+  Since Y1 subset of domain(linear(Xb)), which is subset of Z2, we know Y1 - Z2 = {}, so:
+    X |- c2 let u1 x = e1 in e2: u2 t2 borrows() consumes(domain(~X))
+
+CASE tuple(e1 ... en)
+  By typing rule for tuple(e1 ... en):
+    X = X1 # ... # Xn
+    u != ordinary
+    {}; {}; X1 |- e1: share_as(u, u1) t1
+    ...
+    {}; {}; Xn |- en: share_as(u, un) tn
+    -------------------------------------------------------------------
+    {}; {}; X1 # ... # Xn |- tuple(e1 ... en): u tuple(u1 t1 ... un tn)
+  For each k in 1..n, choose ck = c for the induction.  This is allowed because:
+    If u = linear:
+      c = consume
+      shared(u, uk) = uk
+      uk != shared (by syntax of tuple(u1 t1 ... un tn) type)
+      so shared(u, uk) != shared
+    If u = shared:
+      c = borrow
+      shared(u, uk) != linear
+  By induction:
+    X1 |- c e1: share_as(u, u1) t1 borrows() consumes(domain(~X1))
+    ...
+    Xn |- c en: share_as(u, un) tn borrows() consumes(domain(~Xn))
+  Let:
+    Z1 = domain(~X1) ... Zn = domain(~Xn)
+    Z = Z1 union ... union Zn = domain(~X)
+    Y1 = {} ... Yn = {}
+  By inference rule:
+    u != ordinary
+    c = consume iff u = linear
+    X |- c e1: u1' t1 borrows(Y1) consumes(Z1)
+    ...
+    X |- c en: un' tn borrows(Yn) consumes(Zn)
+    Z = Z1 union ... union Zn
+    Y = Y1 union ... union Yn
+    disjoint(Z1 ... Zn)
+    disjoint(Y, Z)
+    u1' = share_as(u, u1)
+    ...
+    un' = share_as(u, un)
+    --------------------------------------------------------------------------
+    X |- c tuple(e1 ... en): u tuple(u1 t1 ... un tn) borrows(Y) consumes(Z)
+
+CASE e.i
+  By typing rule for e.i:
+    {}; {}; X |- e: shared tuple(u1 t1 ... ui ti ... un tn)
+    -------------------------------------------------------
+    {}; {}; X |- e.i: share_as(shared, ui) ti
+  By induction:
+    X |- borrow e: shared tuple(u1 t1 ... ui ti ... un tn) borrows() consumes(domain(~X))
+  Let:
+    Z = domain(~X)
+    Y = {}
+  By inference rule:
+    X |- borrow e: shared tuple(u1 t1 ... ui ti ... un tn) borrows(Y) consumes(Z)
+    -----------------------------------------------------------------------------
+    X |- c e.i: share_as(shared, ui) ti borrows(Y) consumes(Z)
+
+CASE let tuple(x1 ... xn) = e1 in e2
+  Alpha-rename so that x1 ... xn not in X
+  By typing rule for let tuple(x1 ... xn) = e1 in e2:
+    X = (X0 # Xx), linear(Xb)
+    {}; {}; X0, shared(Xb) |- e0: linear tuple(u1 t1 ... un tn)
+    {}; {}; Xx, linear(Xb), x1 -> u1 t1, ..., xn -> un tn |- ex: ux tx
+    -----------------------------------------------------------------------
+    {}; {}; (X0 # Xx), linear(Xb) |- let tuple(x1 ... xn) = e0 in ex: ux tx
+  By induction (and using ~shared(Xb) = {} and ~linear(Xb) = linear(Xb)):
+    X0, shared(Xb) |- consume e0: linear tuple(u1 t1 ... un tn) borrows() consumes(domain(~X0))
+    Xx, linear(Xb), x1 -> u1 t1, ..., xn -> un tn |- c ex: ux tx borrows() consumes(domain(~Xx) union domain(linear(Xb)) union domain(~{1 -> u1 t1, ..., xn -> un tn}))
+  By Lemma: Introduce borrow, for each x in Xb:
+    X0, linear(Xb) |- consume e0: linear tuple(u1 t1 ... un tn) borrows(Y0) consumes(domain(~X0))
+    where Y0 subset of domain(linear(Xb))
+  By Lemma: Inference weakening:
+    X |- consume e0: linear tuple(u1 t1 ... un tn) borrows(Y0) consumes(domain(~X0))
+    X, x1 -> u1 t1, ..., xn -> un tn |- c ex: ux tx borrows() consumes(domain(~Xx) union domain(linear(Xb)) union domain(~{x1 -> u1 t1, ..., xn -> un tn}))
+  Let:
+    Z0 = domain(~X0)
+    Zx = domain(~Xx) union domain(linear(Xb)) union domain(~{x1 -> u1 t1, ..., xn -> un tn})
+    Yx = {}
+    Xs = {x1, ..., xn}
+    Z0 union (Zx - Xs) = domain(~X0) union domain(~Xx) union domain(linear(Xb)) = domain(~X)
+  Since X = (X0 # Xx), linear(Xb), and x1 ... xn not in X, we know disjoint(Z0, Zx)
+  Since Yx = {}, we know disjoint(Xs, Yx) and disjoint(Z0, Yx)
+  By inference rule:
+    X |- consume e0: linear tuple(u1 t1 ... un tn) borrows(Y0) consumes(Z0)
+    X, x1 -> u1 t1, ..., xn -> un tn |- c ex: ux tx borrows(Yx) consumes(Zx)
+    u1 = linear iff x1 in Zx ... un = linear iff xn in Zx
+    Xs = {x1, ..., xn}
+    disjoint(Xs, Yx)
+    disjoint(Z0, Zx) and disjoint(Z0, Yx)
+    -------------------------------------------------------------------------------------------------------------
+    X |- c let tuple(x1 ... xn) = e0 in ex: ux tx borrows((Y0 - Zx) union (Yx - Xs)) consumes(Z0 union (Zx - Xs))
+  Simplifying:
+    X |- c let tuple(x1 ... xn) = e0 in ex: ux tx borrows((Y0 - Zx) union (Yx - Xs)) consumes(domain(~X))
+  Since Y0 subset of domain(linear(Xb)), which is subset of Zx, we know Y0 - Zx = {}, so:
+    X |- c let tuple(x1 ... xn) = e0 in ex: ux tx borrows() consumes(domain(~X))
+
+CASE new_region()
+  By typing rule for new_region:
+    X = !X
+    {}; {}; !X |- new_region(): linear region
+  By inference rule:
+    X |- c new_region(): linear region borrows() consumes()
+
+CASE free_region(e)
+  By typing rule for free_region:
+    {}; {}; X |- e: linear region
+    -----------------------------------------
+    {}; {}; X |- free_region(e): ordinary int
+  By induction:
+    X |- consume e: linear region borrows() consumes(domain(~X))
+  Let:
+    Z = domain(~X)
+    Y = {}
+  By inference rule:
+    X |- consume e: linear region borrows(Y) consumes(Z)
+    ----------------------------------------------------------
+    X |- c free_region(e): ordinary int borrows(Y) consumes(Z)
+
+CASE alloc S(e1 ... en) @ e0
+  By typing rule for alloc:
+    X = X0 # X1 # ... # Xn
+    StructType(S) = (u1 t1, ..., un tn)
+    {}; {}; X0 |- e0: linear region
+    {}; {}; X1 |- e1: u1 t1
+    ...
+    {}; {}; Xn |- en: un tn
+    ---------------------------------------------------------------------------------------------------
+    {}; {}; X0 # X1 # ... # Xn |- alloc S(e1 ... en) @ e0: linear tuple(ordinary ref(S), linear region)
+  By induction:
+    X0 |- consume e0: linear region borrows() consumes(domain(~X0))
+    X1 |- consume e1: u1 t1 borrows() consumes(domain(~X1))
+    ...
+    Xn |- consume en: un tn borrows() consumes(domain(~Xn))
+  By Lemma: Inference weakening:
+    X |- consume e0: linear region borrows() consumes(domain(~X0))
+    X |- consume e1: u1 t1 borrows() consumes(domain(~X1))
+    ...
+    X |- consume en: un tn borrows() consumes(domain(~Xn))
+  Let:
+    Z0 = domain(~X0)
+    Z1 = domain(~X1)
+    ...
+    Zn = domain(~Xn)
+    Z = Z0 union Z1 union ... union Zn = domain(~X0) union domain(~X1) union ... union domain(~Xn) = domain(~X)
+    Y = Y0 = Y1 = ... = Yn = {}
+  By inference rule:
+    StructType(S) = (u1 t1, ..., un tn)
+    X |- consume e0: linear region borrows(Y0) consumes(Z0)
+    X |- consume e1: u1 t1 borrows(Y1) consumes(Z1)
+    ...
+    X |- consume en: un tn borrows(Yn) consumes(Zn)
+    Z = Z0 union Z1 union ... union Zn
+    Y = Y0 union Y1 union ... union Yn
+    disjoint(Z0, Z1, ..., Zn)
+    disjoint(Y, Z)
+    ---------------------------------------------------------------------------------------------------
+    X |- c alloc S(e1 ... en) @ e0: linear tuple(ordinary ref(S), linear region) borrows(Y) consumes(Z)
+
+CASE read(e1.i) @ e0
+  By typing rule for read:
+    X = X0 # X1
+    StructType(S) = (u1 t1, ..., ui ti, ..., un tn)
+    {}; {}; X0 |- e0: shared region
+    {}; {}; X1 |- e1: ordinary ref(S)
+    -----------------------------------------------------------
+    {}; {}; X0 # X1 |- read(e1.i) @ e0: share_as(shared, ui) ti
+  By induction:
+    X0 |- borrow e0: shared region borrows() consumes(domain(~X0))
+    X1 |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+  By Lemma: Inference weakening:
+    X |- borrow e0: shared region borrows() consumes(domain(~X0))
+    X |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+  Let:
+    Z0 = domain(~X0)
+    Z1 = domain(~X1)
+    Z = Z0 union Z1 = domain(~X0) union domain(~X1) = domain(~X)
+    Y = Y0 = Y1 = {}
+  By inference rule:
+    StructType(S) = (u1 t1, ..., ui ti, ..., un tn)
+    X |- borrow e0: shared region borrows(Y0) consumes(Z0)
+    X |- borrow e1: ordinary ref(S) borrows(Y1) consumes(Z1)
+    Z = Z0 union Z1
+    Y = Y0 union Y1
+    disjoint(Z0, Z1)
+    disjoint(Y, Z)
+    ----------------------------------------------------------------------
+    X |- c read(e1.i) @ e0: share_as(shared, ui) ti borrows(Y) consumes(Z)
+
+CASE write(e1.i := e2) @ e0
+  By typing rule for write:
+    X = X0 # X1 # X2
+    StructType(S) = (u1 t1, ..., ordinary ti, ..., un tn)
+    {}; {}; X0 |- e0: linear region
+    {}; {}; X1 |- e1: ordinary ref(S)
+    {}; {}; X2 |- e2: ordinary ti
+    -------------------------------------------------------------
+    {}; {}; X0 # X1 # X2 |- write(e1.i := e2) @ e0: linear region
+  By induction:
+    X0 |- consume e0: linear region borrows() consumes(domain(~X0))
+    X1 |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+    X2 |- borrow e2: ordinary ti borrows() consumes(domain(~X2))
+  By Lemma: Inference weakening:
+    X |- consume e0: linear region borrows() consumes(domain(~X0))
+    X |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+    X |- borrow e2: ordinary ti borrows() consumes(domain(~X2))
+  Let:
+    Z0 = domain(~X0)
+    Z1 = domain(~X1)
+    Z2 = domain(~X2)
+    Z = Z0 union Z1 union Z2 = domain(~X0) union domain(~X1) union domain(~X2) = domain(~X)
+    Y = Y0 = Y1 = Yx = {}
+  By inference rule:
+    StructType(S) = (u1 t1, ..., ordinary ti, ..., un tn)
+    X |- consume e0: linear region borrows(Y0) consumes(Z0)
+    X |- borrow e1: ordinary ref(S) borrows(Y1) consumes(Z1)
+    X |- borrow e2: ordinary ti borrows(Yx) consumes(Z2)
+    Z = Z0 union Z1 union Z2
+    Y = Y0 union Y1 union Yx
+    disjoint(Z0, Z1, Z2)
+    disjoint(Y, Z)
+    -------------------------------------------------------------------
+    X |- c write(e1.i := e2) @ e0: linear region borrows(Y) consumes(Z)
+
+CASE swap(e1.i := e2) @ e0
+  By typing rule for swap:
+    X = X0 # X1 # X2
+    StructType(S) = (u1 t1, ..., linear ti, ..., un tn)
+    {}; {}; X0 |- e0: linear region
+    {}; {}; X1 |- e1: ordinary ref(S)
+    {}; {}; X2 |- e2: linear ti
+    -------------------------------------------------------------------------------------
+    {}; {}; X0 # X1 # X2 |- swap(e1.i := e2) @ e0: linear tuple(linear ti, linear region)
+  By induction:
+    X0 |- consume e0: linear region borrows() consumes(domain(~X0))
+    X1 |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+    X2 |- consume e2: linear ti borrows() consumes(domain(~X2))
+  By Lemma: Inference weakening:
+    X |- consume e0: linear region borrows() consumes(domain(~X0))
+    X |- borrow e1: ordinary ref(S) borrows() consumes(domain(~X1))
+    X |- consume e2: linear ti borrows() consumes(domain(~X2))
+  Let:
+    Z0 = domain(~X0)
+    Z1 = domain(~X1)
+    Z2 = domain(~X2)
+    Z = Z0 union Z1 union Z2 = domain(~X0) union domain(~X1) union domain(~X2) = domain(~X)
+    Y = Y0 = Y1 = Yx = {}
+  By inference rule:
+    StructType(S) = (u1 t1, ..., linear ti, ..., un tn)
+    X |- consume e0: linear region borrows(Y0) consumes(Z0)
+    X |- borrow e1: ordinary ref(S) borrows(Y1) consumes(Z1)
+    X |- consume e2: linear ti borrows(Yx) consumes(Z2)
+    Z = Z0 union Z1 union Z2
+    Y = Y0 union Y1 union Yx
+    disjoint(Z0, Z1, Z2)
+    disjoint(Y, Z)
+    -------------------------------------------------------------------------------------------
+    X |- c swap(e1.i := e2) @ e0: linear tuple(linear ti, linear region) borrows(Y) consumes(Z)
+
+=====================================================================
+Lemma: Introduce borrow
+
+If   X, x -> shared tx |- c e: u t borrows(Y)  consumes(Z)
+Then X, x -> linear tx |- c e: u t borrows(Y') consumes(Z)
+where Y' = Y or Y' = Y union {x}
+and x not in Z
+
+Proof by induction on X, x -> shared tx |- c e: u t borrows(Y) consumes(Z)
+
+(Note: we wrote the X, x -> shared t |- borrow x: ... rule using "borrow" rather than "c" to make sure this lemma works.)
+
+CASE e = x
+  Only matching inference rule is:
+    X, x -> shared t |- borrow x: shared t borrows() consumes()
+  By inference rule:
+    X, x -> linear t |- borrow x: shared t borrows(x) consumes()
+
+CASE e = x' where x' != x
+  case
+      X, x -> shared tx, x' -> linear t |- consume x': linear t borrows() consumes(x')
+    By inference rule:
+      X, x -> linear tx, x' -> linear t |- consume x': linear t borrows() consumes(x')
+  case
+      X, x -> shared tx, x' -> linear t |- borrow x': shared t borrows(x') consumes()
+    By inference rule:
+      X, x -> linear tx, x' -> linear t |- borrow x': shared t borrows(x') consumes()
+  case
+      X, x -> shared tx, x' -> shared t |- borrow x': shared t borrows() consumes()
+    By inference rule:
+      X, x -> linear tx, x' -> shared t |- borrow x': shared t borrows() consumes()
+  case
+      X, x -> shared tx, x' -> ordinary t |- c x': ordinary t borrows() consumes()
+    By inference rule:
+      X, x -> linear tx, x' -> ordinary t |- c x': ordinary t borrows() consumes()
+
+CASE e = i
+  By inference rule:
+    X, x -> shared tx |- c i: ordinary int borrows() consumes()
+  By inference rule:
+    X, x -> linear tx |- c i: ordinary int borrows() consumes()
+
+CASE e = e1 + e2
+  By inference rule:
+    X, x -> shared |- borrow e1: ordinary int borrows(Y1) consumes(Z1)
+    X, x -> shared |- borrow e2: ordinary int borrows(Yx) consumes(Z2)
+    Z = Z1 union Z2
+    Y = Y1 union Yx
+    disjoint(Z1, Z2)
+    disjoint(Y, Z)
+    ------------------------------------------------------------------
+    X, x -> shared |- c e1 + e2: ordinary int borrows(Y) consumes(Z)
+  By induction:
+    X, x -> linear |- borrow e1: ordinary int borrows(Y1') consumes(Z1)
+    X, x -> linear |- borrow e2: ordinary int borrows(Yx') consumes(Z2)
+    Y1' = Y1 or Y1' = Y1 union {x}
+    Yx' = Yx or Yx' = Yx union {x}
+    x not in Z1
+    x not in Z2
+  By inference rule:
+    X, x -> linear |- borrow e1: ordinary int borrows(Y1') consumes(Z1)
+    X, x -> linear |- borrow e2: ordinary int borrows(Yx') consumes(Z2)
+    Z = Z1 union Z2
+    Y' = Y1' union Yx'
+    disjoint(Z1, Z2)
+    disjoint(Y', Z)
+    ------------------------------------------------------------------
+    X, x -> linear |- c e1 + e2: ordinary int borrows(Y') consumes(Z)
+    Y' = Y or Y' = Y union {x}
+    x not in Z
+
+CASE e = e1; e2
+  By inference rule:
+    X, x -> shared |- borrow e1: u1 t1 borrows(Y1) consumes(Z1)
+    X, x -> shared |- c e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 != linear
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    -----------------------------------------------------------------------------------
+    X, x -> shared |- c e1; e2: u2 t2 borrows((Y1 - Z2) union Yx) consumes(Z1 union Z2)
+    Y = (Y1 - Z2) union Yx
+    Z = Z1 union Z2
+  By induction:
+    X, x -> linear |- borrow e1: u1 t1 borrows(Y1') consumes(Z1)
+    X, x -> linear |- c e2: u2 t2 borrows(Yx') consumes(Z2)
+    Y1' = Y1 or Y1' = Y1 union {x}
+    Yx' = Yx or Yx' = Yx union {x}
+    x not in Z1
+    x not in Z2
+  By inference rule:
+    X, x -> linear |- borrow e1: u1 t1 borrows(Y1') consumes(Z1)
+    X, x -> linear |- c e2: u2 t2 borrows(Yx') consumes(Z2)
+    u1 != linear
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx')
+    -------------------------------------------------------------------------------------
+    X, x -> linear |- c e1; e2: u2 t2 borrows((Y1' - Z2) union Yx') consumes(Z1 union Z2)
+    Y' = (Y1' - Z2) union Yx'
+    Y' = Y or Y' = Y union {x}
+    x not in Z
+
+CASE e = let u x' = e1 in e2
+  Alpha rename so that x' != x
+  By inference rule:
+    c1 = consume iff u1 = linear
+    X, x -> shared |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+    X, x -> shared, x' -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 = linear iff x' in Z2
+    x' not in Yx
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    If u1 = shared then disjoint(Y1, Z2)
+    --------------------------------------------------------------------------------------------------------------------
+    X, x -> shared |- c2 let u1 x' = e1 in e2: u2 t2 borrows((Y1 - Z2) union (Yx - {x'})) consumes(Z1 union (Z2 - {x'}))
+  By induction:
+    X, x -> linear |- c1 e1: u1 t1 borrows(Y1') consumes(Z1)
+    X, x -> linear, x' -> u1 t1 |- c2 e2: u2 t2 borrows(Yx') consumes(Z2)
+    Y1' = Y1 or Y1' = Y1 union {x}
+    Yx' = Yx or Yx' = Yx union {x}
+    x not in Z1
+    x not in Z2
+  By inference rule:
+    c1 = consume iff u1 = linear
+    X, x -> linear |- c1 e1: u1 t1 borrows(Y1') consumes(Z1)
+    X, x -> linear, x' -> u1 t1 |- c2 e2: u2 t2 borrows(Yx') consumes(Z2)
+    u1 = linear iff x' in Z2
+    x' not in Yx'
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx')
+    If u1 = shared then disjoint(Y1', Z2)
+    ----------------------------------------------------------------------------------------------------------------------
+    X, x -> linear |- c2 let u1 x' = e1 in e2: u2 t2 borrows((Y1' - Z2) union (Yx' - {x'})) consumes(Z1 union (Z2 - {x'}))
+    Y' = (Y1' - Z2) union (Yx' - {x'})
+    Y' = Y or Y' = Y union {x}
+    x not in Z
+
+Other cases are similar.
+
+=====================================================================
+Lemma: Eliminate borrow
+
+If   X, x -> linear tx |- c e: u t borrows(Y)       consumes(Z)
+and x not in Z
+Then X, x -> shared tx |- c e: u t borrows(Y - {x}) consumes(Z)
+
+Proof by induction on X, x -> linear tx |- c e: u t borrows(Y) consumes(Z)
+
+CASE e = x
+  case
+    X, x -> linear t |- consume x: linear t borrows() consumes(x)
+    Since Z = {x}, this doesn't satisfy the assumption of x not in Z, so this case can't happen.
+  case
+      X, x -> linear t |- borrow x: shared t borrows(x) consumes()
+    By inference rule:
+      X, x -> shared t |- borrow x: shared t borrows() consumes()
+
+CASE e = x' where x' != x
+  case
+      X, x -> linear tx, x' -> linear t |- consume x': linear t borrows() consumes(x')
+    By inference rule:
+      X, x -> shared tx, x' -> linear t |- consume x': linear t borrows() consumes(x')
+  case
+      X, x -> linear tx, x' -> linear t |- borrow x': shared t borrows(x') consumes()
+    By inference rule:
+      X, x -> shared tx, x' -> linear t |- borrow x': shared t borrows(x') consumes()
+  case
+      X, x -> linear tx, x' -> shared t |- borrow x': shared t borrows() consumes()
+    By inference rule:
+      X, x -> shared tx, x' -> shared t |- borrow x': shared t borrows() consumes()
+  case
+      X, x -> linear tx, x' -> ordinary t |- c x': ordinary t borrows() consumes()
+    By inference rule:
+      X, x -> shared tx, x' -> ordinary t |- c x': ordinary t borrows() consumes()
+
+CASE e = i
+  By inference rule:
+    X, x -> linear tx |- c i: ordinary int borrows() consumes()
+  By inference rule:
+    X, x -> shared tx |- c i: ordinary int borrows() consumes()
+
+CASE e = e1 + e2
+  By inference rule:
+    X, x -> linear |- borrow e1: ordinary int borrows(Y1) consumes(Z1)
+    X, x -> linear |- borrow e2: ordinary int borrows(Yx) consumes(Z2)
+    Z = Z1 union Z2
+    Y = Y1 union Yx
+    disjoint(Z1, Z2)
+    disjoint(Y, Z)
+    ------------------------------------------------------------------
+    X, x -> linear |- c e1 + e2: ordinary int borrows(Y) consumes(Z)
+  By induction:
+    X, x -> shared |- borrow e1: ordinary int borrows(Y1 - {x}) consumes(Z1)
+    X, x -> shared |- borrow e2: ordinary int borrows(Yx - {x}) consumes(Z2)
+  By inference rule:
+    X, x -> shared |- borrow e1: ordinary int borrows(Y1 - {x}) consumes(Z1)
+    X, x -> shared |- borrow e2: ordinary int borrows(Yx - {x}) consumes(Z2)
+    Z = Z1 union Z2
+    Y - {x} = (Y1 - {x}) union (Yx - {x})
+    disjoint(Z1, Z2)
+    disjoint(Y - {x}, Z)
+    ----------------------------------------------------------------------
+    X, x -> shared |- c e1 + e2: ordinary int borrows(Y - {x}) consumes(Z)
+
+CASE e = e1; e2
+  By inference rule:
+    X, x -> linear |- borrow e1: u1 t1 borrows(Y1) consumes(Z1)
+    X, x -> linear |- c e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 != linear
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    -----------------------------------------------------------------------------------
+    X, x -> linear |- c e1; e2: u2 t2 borrows((Y1 - Z2) union Yx) consumes(Z1 union Z2)
+    Y = (Y1 - Z2) union Yx
+    Z = Z1 union Z2
+  By induction:
+    X, x -> shared |- borrow e1: u1 t1 borrows(Y1 - {x}) consumes(Z1)
+    X, x -> shared |- c e2: u2 t2 borrows(Yx - {x}) consumes(Z2)
+  By inference rule:
+    X, x -> shared |- borrow e1: u1 t1 borrows(Y1 - {x}) consumes(Z1)
+    X, x -> shared |- c e2: u2 t2 borrows(Yx - {x}) consumes(Z2)
+    u1 != linear
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx - {x})
+    -------------------------------------------------------------------------------------------
+    X, x -> shared |- c e1; e2: u2 t2 borrows(((Y1 - Z2) union Yx) - {x}) consumes(Z1 union Z2)
+
+CASE e = let u x' = e1 in e2
+  Alpha rename so that x' != x
+  By inference rule:
+    c1 = consume iff u1 = linear
+    X, x -> linear |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+    X, x -> linear, x' -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 = linear iff x' in Z2
+    x' not in Yx
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    If u1 = shared then disjoint(Y1, Z2)
+    --------------------------------------------------------------------------------------------------------------------
+    X, x -> linear |- c2 let u1 x' = e1 in e2: u2 t2 borrows((Y1 - Z2) union (Yx - {x'})) consumes(Z1 union (Z2 - {x'}))
+  By induction:
+    X, x -> shared |- c1 e1: u1 t1 borrows(Y1 - {x}) consumes(Z1)
+    X, x -> shared, x' -> u1 t1 |- c2 e2: u2 t2 borrows(Yx - {x}) consumes(Z2)
+  By inference rule:
+    c1 = consume iff u1 = linear
+    X, x -> shared |- c1 e1: u1 t1 borrows(Y1 - {x}) consumes(Z1)
+    X, x -> shared, x' -> u1 t1 |- c2 e2: u2 t2 borrows(Yx - {x}) consumes(Z2)
+    u1 = linear iff x' in Z2
+    x' not in Yx - {x}
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx - {x})
+    If u1 = shared then disjoint(Y1 - {x}, Z2)
+    ----------------------------------------------------------------------------------------------------------------------------
+    X, x -> shared |- c2 let u1 x' = e1 in e2: u2 t2 borrows(((Y1 - Z2) union (Yx - {x'})) - {x}) consumes(Z1 union (Z2 - {x'}))
+
+Other cases are similar.
+
+=====================================================================
+Lemma: Inference weakening
+
+If Xa |- c e: u t borrows(Y) consumes(Z)
+and X = Xa, Xx
+Then X |- c e: u t borrows(Y) consumes(Z)
+
+(Note: X2 may contain linear variables, which will be neither borrowed nor consumed by e)
+
+Proof by induction on X1 |- c e: u t borrows(Y) consumes(Z)
+
+CASE e = x
+  case
+      Xa = Xa', x -> linear t
+      Xa', x -> linear t |- consume x: linear t borrows() consumes(x)
+    By inference rule:
+      Xa', Xx, x -> linear t |- consume x: linear t borrows() consumes(x)
+  case
+      Xa = Xa', x -> linear t
+      Xa', x -> linear t |- borrow x: shared t borrows(x) consumes()
+    By inference rule:
+      Xa', Xx, x -> linear t |- borrow x: shared t borrows(x) consumes()
+  case
+      Xa = Xa', x -> shared t
+      Xa', x -> shared t |- borrow x: shared t borrows() consumes()
+    By inference rule:
+      Xa', Xx, x -> shared t |- borrow x: shared t borrows() consumes()
+  case
+      Xa = Xa', x -> ordinary t
+      Xa', x -> ordinary t |- c x: ordinary t borrows() consumes()
+    By inference rule:
+      Xa', Xx, x -> ordinary t |- c x: ordinary t borrows() consumes()
+
+CASE e = e1 + e2
+  By inference rule:
+    Xa |- borrow e1: ordinary int borrows(Y1) consumes(Z1)
+    Xa |- borrow e2: ordinary int borrows(Yx) consumes(Z2)
+    Z = Z1 union Z2
+    Y = Y1 union Yx
+    disjoint(Z1, Z2)
+    disjoint(Y, Z)
+    -----------------------------------------------------
+    Xa |- c e1 + e2: ordinary int borrows(Y) consumes(Z)
+  By induction:
+    X |- borrow e1: ordinary int borrows(Y1) consumes(Z1)
+    X |- borrow e2: ordinary int borrows(Yx) consumes(Z2)
+  By inference rule:
+    X |- borrow e1: ordinary int borrows(Y1) consumes(Z1)
+    X |- borrow e2: ordinary int borrows(Yx) consumes(Z2)
+    Z = Z1 union Z2
+    Y = Y1 union Yx
+    disjoint(Z1, Z2)
+    disjoint(Y, Z)
+    -----------------------------------------------------
+    X |- c e1 + e2: ordinary int borrows(Y) consumes(Z)
+
+CASE e = let u1 x = e1 in e2
+  Alpha rename so that x not in Xx
+  By inference rule:
+    c1 = consume iff u1 = linear
+    Xa |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+    Xa, x -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 = linear iff x in Z2
+    x not in Yx
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    If u1 = shared then disjoint(Y1, Z2)
+    -----------------------------------------------------------------------------------------------------
+    Xa |- c2 let u1 x = e1 in e2: u2 t2 borrows((Y1 - Z2) union (Yx - {x})) consumes(Z1 union (Z2 - {x}))
+  By induction:
+    X |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+    X, x -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+  By inference rule:
+    c1 = consume iff u1 = linear
+    X |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+    X, x -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 = linear iff x in Z2
+    x not in Yx
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    If u1 = shared then disjoint(Y1, Z2)
+    ----------------------------------------------------------------------------------------------------
+    X |- c2 let u1 x = e1 in e2: u2 t2 borrows((Y1 - Z2) union (Yx - {x})) consumes(Z1 union (Z2 - {x}))
+
+Other cases are similar.
+
+=====================================================================
+Lemma: Inference strengthening
+
+If Xa # Xx |- c e: u t borrows(Y) consumes(Z)
+and disjoint(domain(~Xx), Y union Z)
+Then Xa |- c e: u t borrows(Y) consumes(Z)
+
+Proof by induction on Xa # Xx |- c e: u t borrows(Y) consumes(Z)
+
+CASE e = x
+  case
+      Xa = Xa', x -> linear t
+      (Xa' # Xx), x -> linear t |- consume x: linear t borrows() consumes(x)
+    By inference rule:
+      Xa', x -> linear t |- consume x: linear t borrows() consumes(x)
+  case
+      Xx = Xx', x -> linear t
+      (Xa # Xx'), x -> linear t |- consume x: linear t borrows() consumes(x)
+    This case does not satisfy the assumption disjoint(domain(~Xx), Y union Z)
+    because Y union Z = {x} and x in domain(~Xx),
+    so this case can't happen.
+  case
+      Xa = Xa', x -> linear t
+      (Xa' # Xx), x -> linear t |- borrow x: shared t borrows(x) consumes()
+    By inference rule:
+      Xa', x -> linear t |- borrow x: shared t borrows(x) consumes()
+  case
+      Xx = Xx', x -> linear t
+      (Xa # Xx'), x -> linear t |- borrow x: shared t borrows(x) consumes()
+    This case does not satisfy the assumption disjoint(domain(~Xx), Y union Z)
+    because Y union Z = {x} and x in domain(~Xx),
+    so this case can't happen.
+  case
+      Xa = Xa', x -> shared t
+      Xx = Xx', x -> shared t
+      (Xa' # Xx'), x -> shared t |- borrow x: shared t borrows() consumes()
+    By inference rule:
+      Xa', x -> shared t |- borrow x: shared t borrows() consumes()
+  case
+      Xa = Xa', x -> ordinary t
+      Xx = Xx', x -> ordinary t
+      (Xa' # Xx'), x -> ordinary t |- c x: ordinary t borrows() consumes()
+    By inference rule:
+      Xa', x -> ordinary t |- c x: ordinary t borrows() consumes()
+
+CASE e = e1 + e2
+  By inference rule:
+    Xa # Xx |- borrow e1: ordinary int borrows(Y1) consumes(Z1)
+    Xa # Xx |- borrow e2: ordinary int borrows(Yx) consumes(Z2)
+    Z = Z1 union Z2
+    Y = Y1 union Yx
+    disjoint(Z1, Z2)
+    disjoint(Y, Z)
+    ---------------------------------------------------------
+    Xa # Xx |- c e1 + e2: ordinary int borrows(Y) consumes(Z)
+  By induction:
+    Xa |- borrow e1: ordinary int borrows(Y1) consumes(Z1)
+    Xa |- borrow e2: ordinary int borrows(Yx) consumes(Z2)
+  By inference rule:
+    Xa |- borrow e1: ordinary int borrows(Y1) consumes(Z1)
+    Xa |- borrow e2: ordinary int borrows(Yx) consumes(Z2)
+    Z = Z1 union Z2
+    Y = Y1 union Yx
+    disjoint(Z1, Z2)
+    disjoint(Y, Z)
+    ----------------------------------------------------
+    Xa |- c e1 + e2: ordinary int borrows(Y) consumes(Z)
+
+CASE e = let u1 x = e1 in e2
+  By inference rule:
+    c1 = consume iff u1 = linear
+    Xa # Xx |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+    (Xa # Xx), x -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 = linear iff x in Z2
+    x not in Yx
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    If u1 = shared then disjoint(Y1, Z2)
+    ----------------------------------------------------------------------------------------------------------
+    Xa # Xx |- c2 let u1 x = e1 in e2: u2 t2 borrows((Y1 - Z2) union (Yx - {x})) consumes(Z1 union (Z2 - {x}))
+  By induction:
+    Xa |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+  If u1 = linear:
+      (Xa, x -> u1 t1) # Xx |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+    By induction:
+      Xa, x -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+  If u1 != linear:
+      (Xa, x -> u1 t1) # (Xx, x -> u1 t1) |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+    We satisfy disjoint(domain(~(Xx, x -> u1 t1)), Yx union Z2)
+      because ~(Xx, x -> u1 t1) = ~Xx
+        because u1 != linear
+    By induction:
+      Xa, x -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+  By inference rule:
+    c1 = consume iff u1 = linear
+    Xa |- c1 e1: u1 t1 borrows(Y1) consumes(Z1)
+    Xa, x -> u1 t1 |- c2 e2: u2 t2 borrows(Yx) consumes(Z2)
+    u1 = linear iff x in Z2
+    x not in Yx
+    disjoint(Z1, Z2)
+    disjoint(Z1, Yx)
+    If u1 = shared then disjoint(Y1, Z2)
+    -----------------------------------------------------------------------------------------------------
+    Xa |- c2 let u1 x = e1 in e2: u2 t2 borrows((Y1 - Z2) union (Yx - {x})) consumes(Z1 union (Z2 - {x}))
+
+Other cases are similar.
+
+=====================================================================

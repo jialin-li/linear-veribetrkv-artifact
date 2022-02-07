@@ -1,0 +1,430 @@
+=====================================================================
+Syntax and definitions
+
+location    l
+region name r
+region data d = l1 -> s1 ... ln -> sn
+region      r d
+integer     i
+variable    x
+struct      S
+instance    s = S(v1 ... vn)
+usage       u = linear | shared | ordinary
+            uLS = linear | shared
+            uLO = linear | ordinary
+type        t = int | ref(S) | region | tuple(uLO_1 t1 ... uLO_n tn)
+value       v = i | l | null | r d | tuple(v1 ... vn)
+expression  e = v
+              | e1 + e2 | e1; e2 | x | let u x = e1 in e2
+              | tuple(e1 ... en) | e.i
+              | let tuple(x1 ... xn) = e1 in e2
+              | new_region() | free_region(e) | alloc S(e1 ... en) @ e0
+              | read(e1.i) @ e0 | write(e1.i := e2) @ e0 | swap(e1.i := e2) @ e0
+
+SMT formula f = v | true | false | x | forall x. f | let x = f1 in f2
+              | f1 + f2 | f1 == f2 | f1 ==> f2 | f1 /\ f2 | not f
+              | tuple(f1 ... fn) | f.i
+              | name_of_region(f) | valid_ref(f1, f2) | fresh_ref(f1) @ f0
+              | read(f1.i) @ f0 | modifies(f1.i1 ... fn.in) @ (f0 -> f0')
+
+We assume a function RegionOfLoc that maps locations to region names and a function StructType that maps struct names to struct types:
+  RegionOfLoc(l) = r
+  StructType(S) = (uLO_1 t1, ..., uLO_n tn)
+
+Formula validity |- f
+- name_of_region(f) equals r if f = r d and is arbitrary otherwise
+- valid_ref(f1, f2) is true iff f1 = l and f2 = r and RegionOfLoc(l) = r
+- fresh_ref(f1) @ f0 is true iff f0 = r d and f1 = l and l not in domain(d)
+- read(f1.i) @ f0 equals vi
+  if f1 = l and f0 = r d and d = ... l -> s ... and s = S(... vi ...)
+  and is arbitrary otherwise
+- modifies(f1.i1 ... fn.in) @ (f0 -> f0') is true iff
+  f0 = r d and f0' = r d' and f1 = l1 ... fn = ln
+  and d equals d' except:
+  - d' may contain additional mappings l' -> s'
+  - for each lk.ik in l1.i1 ... ln.in, read(lk.ik) @ r d may differ from read(lk.ik) @ r d'
+
+location typing L = l1 -> S1 ... ln -> Sn
+region typing R = r1 -> uLS_1 ... rn -> uLS_n
+variable typing X = x1 -> u1 t1 ... xn -> un tn
+combined typing C = L; R; X
+
+!X = all x -> u t mappings in X where u != linear
+!R = all r -> u mappings in R where u != linear
+~X = all x -> u t mappings in X where u = linear
+~R = all r -> u mappings in R where u = linear
+!(L; R; X) = L; !R; !X
+
+We use linear(...) and shared(...) to create entirely linear or entirely shared environments:
+  uLS(r1 -> u1 ... rn -> un) = l1 -> uLS ... ln -> uLS
+  uLS(x1 -> u1 t1 ... xn -> un tn) = x1 -> uLS t1 ... xn -> uLS tn
+  uLS(L; R; X) = {}; uLS(R); uLS(X)
+
+We use "," to extend environments with new mappings:
+  L, l -> S where l is not in domain(L)
+  R, r -> u where r is not in domain(R)
+  X, x -> u t where x is not in domain(X)
+We also use "," to indicate joining environments with disjoint domains:
+  L1, L2 where domain(L1) is disjoint with domain(L2)
+  R1, R2 where domain(R1) is disjoint with domain(R2)
+  X1, X2 where domain(X1) is disjoint with domain(X2)
+  (L1; R1; X1), (L2; R2; X2) = L1, L2; R1, R2; X1, X2
+For convenience:
+  (L; R; X), l -> S = L, l -> S; R; X
+  (L; R; X), r -> u = L; R, r -> u; X
+  (L; R; X), x -> u t = L; R; X, x -> u t
+We use "#" to indicate disjoint linear mappings but identical ordinary and shared mappings:
+  R = R1 # R2 iff !R = !R1 = !R2 and ~R = ~R1, ~R2
+  X = X1 # X2 iff !X = !X1 = !X2 and ~X = ~X1, ~X2
+For convenience:
+  (L; R1; X1) # (L; R2; X2) = L; R1 # R2; X1 # X2
+  C1 # C2 # ... # Cn denotes C1 # (C2 # (... # Cn)...) for n >= 1 and !C for n = 0
+
+We define share_as(uLS, u') to demote u' from linear to shared if uLS = shared:
+  share_as(linear, u') = u'
+  share_as(shared, ordinary) = ordinary
+  share_as(shared, shared) = shared
+  share_as(shared, linear) = shared
+
+=====================================================================
+Notes:
+
+Expressions evaluate to values.
+Struct instances are not values but are instead referred to by references,
+where references are values.  This allows struct instances to refer to each cyclically.
+
+=====================================================================
+Example:
+
+StructType(S1) = (ordinary int, ordinary ref(S1))
+
+Define the following example expression e to be:
+  let linear a: region = new_region() in
+  let tuple(x: ref(S1), a: region) = alloc S1(10, null) @ a in
+  let tuple(y: ref(S1), a: region) = alloc S1(20, null) @ a in
+  let linear a: region = write(x.1 := 100) @ a in
+  let linear a: region = write(y.1 := 200) @ a in
+  let linear a: region = write(x.2 := y) @ a in
+  let linear a: region = write(y.2 := x) @ a in
+  let ordinary sum: int = read(x.1) @ a + read(y.1) @ a in
+  free_region(a);
+  sum
+
+e is well typed:
+  {}; {}; {} |- e: ordinary int
+
+e has a valid weakest precondition that proves sum == 300:
+  wp(e, x. (x == 300)) =
+  (forall a0.
+  (forall _x, _a1.
+      valid_ref(_x, name_of_region(a0)) /\ fresh_ref(_x) @ a0 /\ modifies() @ (a0 -> _a1) /\
+      10 == read(_x.1) @ _a1 /\ null == read(_x.2) @ _a1
+    ==>
+  (forall x, a1. tuple(_x, _a1) == tuple(x, a1) ==>
+  (forall _y, _a2.
+      valid_ref(_y, name_of_region(a1)) /\ fresh_ref(_x) @ a1 /\ modifies() @ (a1 -> _a2) /\
+      20 == read(_y.1) @ _a2 /\ null == read(_y.2) @ _a2
+    ==>
+  (forall y, a2. tuple(_y, _a2) == tuple(y, a2) ==>
+  valid_ref(x, name_of_region(a2)) /\ (forall a3. 100 == read(x.1) @ a3 /\ modifies(x.1) @ (a2 -> a3) ==>
+  valid_ref(y, name_of_region(a3)) /\ (forall a4. 200 == read(y.1) @ a4 /\ modifies(y.1) @ (a3 -> a4) ==>
+  valid_ref(x, name_of_region(a4)) /\ (forall a5. y == read(x.2) @ a5 /\ modifies(x.2) @ (a4 -> a5) ==>
+  valid_ref(y, name_of_region(a5)) /\ (forall a6. x == read(y.2) @ a6 /\ modifies(y.2) @ (a5 -> a6) ==>
+  valid_ref(x, name_of_region(a6)) /\
+  valid_ref(y, name_of_region(a6)) /\
+  forall __z.
+  read(x.1) @ a6 + read(y.1) @ a6 == 300)))))))))
+
+=====================================================================
+Operational semantics e --> e'
+
+e -> e'
+--------------
+E[e] --> E[e']
+
+E = [_]
+  | E1 + e2 | v1 + E2
+  | E1; e2
+  | let u x = E1 in e2
+  | tuple(v1 ... vi Ej ek ... en)
+  | E.i
+  | let tuple(x1 ... xn) = E1 in e2
+  | free_region(E)
+  | alloc S(e1 ... en) @ E0 | alloc S(v1 ... vi Ej ek ... en) @ v0
+  | read(e1.i) @ E0 | read(E1.i) @ v0
+  | write(e1.i := e2) @ E0 | write(E1.i := e2) @ v0 | write(v1.i := E2) @ v0
+  | swap(e1.i := e2) @ E0 | swap(E1.i := e2) @ v0 | swap(v1.i := E2) @ v0
+
+i1 + i2 -> i3
+  where i3 is sum of i1, i2
+
+v1; e2 -> e2
+
+let u x = v1 in e2 -> e2[x := v1]
+
+tuple(v1 ... vi ... vn).i -> vi
+
+let tuple(x1 ... xn) = tuple(v1 ... vn) in e0 -> e0[x1 := v1 ... xn := vn]
+
+new_region() -> r {}
+  where r is fresh
+
+free_region(r d) -> 0
+
+alloc s @ r d -> tuple(l, r (d, l -> s))
+  where l is fresh and RegionOfLoc(l) = r
+
+read(l.i) @ r (d, l -> S(v1 ... vn)) -> vi
+
+write(l.i := vi') @ r (d, l -> S(v1 ... vi ... vn)) -> r (d, l -> S(v1 ... vi' ... vn))
+
+swap(l.i := vi') @ r (d, l -> S(v1 ... vi ... vn)) -> tuple(vi, r (d, l -> S(v1 ... vi' ... vn)))
+
+=====================================================================
+Well-typed struct instance C |- s: S containing uLS
+
+u != ordinary
+StructType(S) = (u1 t1, ..., un tn)
+C1 |- v1: share_as(u, u1) t1
+...
+Cn |- vn: share_as(u, un) tn
+---------------------------------------------
+C1 # ... # Cn |- S(v1 ... vn): S containing u
+
+=====================================================================
+Well-typed region data: L; R |- d: uLS
+
+u != ordinary
+L; R1; {} |- s1: L(l1) containing u
+...
+L; Rn; {} |- sn: L(ln) containing u
+--------------------------------------------
+L; R1 # ... # Rn |- l1 -> s1 ... ln -> sn: u
+
+=====================================================================
+Well-typed expression C |- e: u t
+
+!C, x -> u t |- x: u t
+
+!C |- i: ordinary int
+
+!C, l -> S |- l: ordinary ref(S)
+
+!C |- null: ordinary ref(S)
+
+u != ordinary
+domain(d) = {l in domain(L) | RegionOfLoc(l) = r}
+L; R |- d: u
+-------------------------------------------------
+L; R # {r -> u}; !X |- r d: u region
+
+C1 |- e1: ordinary int
+C2 |- e2: ordinary int
+--------------------------------
+C1 # C2 |- e1 + e2: ordinary int
+
+u1 != linear
+C1, shared(Cb) |- e1: u1 t1
+C2, linear(Cb) |- e2: u2 t2
+--------------------------------------
+(C1 # C2), linear(Cb) |- e1; e2: u2 t2
+
+If u1 = shared then Cb = {}; {}; {}
+C1, shared(Cb)             |- e1: u1 t1
+C2, linear(Cb), x -> u1 t1 |- e2: u2 t2
+---------------------------------------------------
+(C1 # C2), linear(Cb) |- let u1 x = e1 in e2: u2 t2
+
+u != ordinary
+C1 |- e1: share_as(u, u1) t1
+...
+Cn |- en: share_as(u, un) tn
+-----------------------------------------------------------
+C1 # ... # Cn |- tuple(e1 ... en): u tuple(u1 t1 ... un tn)
+
+C |- e: shared tuple(u1 t1 ... ui ti ... un tn)
+-----------------------------------------------
+C |- e.i: share_as(shared, ui) ti
+
+C0, shared(Cb) |- e0: linear tuple(u1 t1 ... un tn)
+Cx, linear(Cb), x1 -> u1 t1, ..., xn -> un tn |- ex: ux tx
+---------------------------------------------------------------
+(C0 # Cx), linear(Cb) |- let tuple(x1 ... xn) = e0 in ex: ux tx
+
+!C |- new_region(): linear region
+
+C |- e: linear region
+---------------------------------
+C |- free_region(e): ordinary int
+
+StructType(S) = (u1 t1, ..., un tn)
+C0 |- e0: linear region
+C1 |- e1: u1 t1
+...
+Cn |- en: un tn
+-------------------------------------------------------------------------------------------
+C0 # C1 # ... # Cn |- alloc S(e1 ... en) @ e0: linear tuple(ordinary ref(S), linear region)
+
+StructType(S) = (u1 t1, ..., ui ti, ..., un tn)
+C0 |- e0: shared region
+C1 |- e1: ordinary ref(S)
+---------------------------------------------------
+C0 # C1 |- read(e1.i) @ e0: share_as(shared, ui) ti
+
+StructType(S) = (u1 t1, ..., ordinary ti, ..., un tn)
+C0 |- e0: linear region
+C1 |- e1: ordinary ref(S)
+C2 |- e2: ordinary ti
+-----------------------------------------------------
+C0 # C1 # C2 |- write(e1.i := e2) @ e0: linear region
+
+StructType(S) = (u1 t1, ..., linear ti, ..., un tn)
+C0 |- e0: linear region
+C1 |- e1: ordinary ref(S)
+C2 |- e2: linear ti
+-----------------------------------------------------------------------------
+C0 # C1 # C2 |- swap(e1.i := e2) @ e0: linear tuple(linear ti, linear region)
+
+=====================================================================
+Weakest precondition wp(e, x. f)
+
+(in all rules, all newly introduced bound variables are fresh, to avoid capturing existing free variables)
+
+wp(i, x. f) = f[x := i]
+
+wp(l, x. f) = f[x := l]
+
+wp(null, x. f) = f[x := null]
+
+wp(r d, x. f) = f[x := r d]
+
+wp(e1 + e2, x. f) = wp(e1, x1. wp(e2, x2. f[x := x1 + x2]))
+
+wp(e1; e2, x2. f) = wp(e1, x1. wp(e2, x2. f))
+
+wp(x0, x. f) = f[x := x0]
+
+wp(let u x1 = e1 in e2, x2. f) = wp(e1, x1. wp(e2, x2. f))
+
+wp(tuple(e1 ... en), x. f) = wp(e1, x1. ... wp(en, xn. f[x := tuple(x1 ... xn)])...)
+
+wp(e0.i, x. f) = wp(e0, x0. f[x = x0.i])
+
+wp(let tuple(x1 ... xn) = e0 in ex, x.f) =
+  wp(e0, x0. forall x1 ... forall xn. x0 == tuple(x1 ... xn) ==> wp(ex, x. f))
+
+wp(new_region(), x. f) = forall x. f
+
+wp(free_region(e0), x. f) = wp(e0, x0. forall x. f)
+
+wp(alloc S(e1 ... en) @ e0, x'. f) =
+  wp(e0, x0. wp(e1, x1. ... wp(en, xn.
+    forall xl', x0'. valid_ref(xl', name_of_region(x0)) /\ fresh_ref(xl') @ x0 /\ modifies() @ (x0 -> x0') /\
+                x1 == read(xl'.1) @ x0' /\ ... /\ xn == read(xl'.n) @ x0'
+            ==> f[x' := tuple(xl', x0')]) ... ))
+
+wp(read(e1.i) @ e0, x. f) =
+  wp(e0, x0. wp(e1, x1. valid_ref(x1, name_of_region(x0)) /\ f[x := read(x1.i) @ x0]))
+
+wp(write(e1.i := e2) @ e0, x0'. f) =
+  wp(e0, x0. wp(e1, x1. wp(e2, x2. valid_ref(x1, name_of_region(x0)) /\
+    (forall x0'. x2 == read(x1.i) @ x0' /\ modifies (x1.i) @ (x0 -> x0') ==> f))))
+
+wp(swap(e1.i := e2) @ e0, x'. f) =
+  wp(e0, x0. wp(e1, x1. wp(e2, x2. valid_ref(x1, name_of_region(x0)) /\
+    (forall x0'. forall x2'.
+      x2 == read(x1.i) @ x0' /\ x2' == read(x1.i) @ x0 /\ modifies(x1.i) @ (x0 -> x0') ==>
+      f[x' := tuple(x2', x0')]))))
+
+=====================================================================
+Region versions versions_r(e)
+(collects possibly differing versions of the same region r in e, with the goal of proving that at most one version exists)
+
+Return any matching regions
+  versions_r(r d) = {d} union versions_r(d)
+  versions_r(r' d) = versions_r(d) where r != r'
+where versions_r(d) is:
+  versions_r({l1 -> s1 ... ln -> sn}) = versions_r(s1) union ... union versions_r(sn)
+and versions_r(s) is:
+  versions_r(S(v1 ... vn)) = versions_r(v1) union ... union versions_r(vn)
+
+For all other expressions, return results from subexpressions:
+  versions_r(i) = {}
+  versions_r(l) = {}
+  versions_r(null) = {}
+  versions_r(e1 + e2) = versions_r(e1) union versions_r(e2)
+  versions_r(e1; e2) = versions_r(e1) union versions_r(e2)
+  versions_r(x) = {}
+  versions_r(let u x = e1 in e2) = versions_r(e1) union versions_r(e2)
+  versions_r(tuple(e1 ... en)) = versions_r(e1) union ... union versions_r(en)
+  versions_r(e.i) = versions_r(e)
+  versions_r(let tuple(x1 ... xn) = e1 in e2) = versions_r(e1) union versions_r(e2)
+  versions_r(new_region()) = {}
+  versions_r(free_region(e)) = versions_r(e)
+  versions_r(alloc S(e1 ... en) @ e0) = versions_r(e0) union ... union versions_r(en)
+  versions_r(read(e1.i) @ e0) = versions_r(e0) union versions_r(e1)
+  versions_r(write(e1.i := e2) @ e0) = versions_r(e0) union versions_r(e1) union versions_r(e2)
+  versions_r(swap(e1.i := e2) @ e0) = versions_r(e0) union versions_r(e1) union versions_r(e2)
+
+=====================================================================
+Main theorems (all proven in proofs.txt)
+
+Theorem: Type preservation
+  If L; R; X |- e: u t
+  and e --> e'
+  Then there is some L', R'
+  such that L, L'; R'; X |- e': u t
+  and any r in domain(R') - domain(R) was chosen as a fresh region name during e --> e' and R'(r) = linear
+  and any r in domain(R) - domain(R') is such that R(r) = linear
+  and for any l in domain(L'), l was chosen as a fresh location during e --> e' and RegionOfLoc(l) = r and r -> linear in R
+
+Theorem: WP preservation
+  If C |- e: u t
+  and |- wp(e, x. f)
+  and e --> e'
+  Then |- wp(e', x. f)
+
+Theorem: Progress
+  If L; R; {} |- e: u t
+  and |- wp(e, x. f)
+  and e is not a value
+  Then there is an e' such that e --> e'
+
+Theorem: Region agreement preservation
+  If C |- e: u t
+  and e --> e'
+  and |versions_r(e)| <= 1
+  Then |versions_r(e')| <= 1
+  and if r was not chosen as a fresh region name during e --> e', then |versions_r(e')| <= |versions_r(e)|
+
+=====================================================================
+In Linear Dafny, we're currently using regions as a verification technique
+to manage mutation and borrowing, rather than as a memory management mechanism,
+since Linear Dafny already has automatic memory management via garbage collection (for C#)
+and reference counting (for C++).
+If we did use it for memory management (e.g. for Rust), we might want to prove additional theorems.
+As potential future work, we sketch out the following additional conjectures:
+
+Conjecture: No leaked regions
+  If L; R; X |- e: u t
+  and R(r) = linear
+  and e --> e'
+  and |versions_r(e)| = 1
+  and |versions_r(e')| = 0
+  Then there is some r' d' such that e = E[free_region(r' d')] and r = r' or r is contained inside d'
+
+Conjecture: No spontaneous regions
+  If L; R; X |- e: u t
+  and e --> e'
+  and |versions_r(e)| = 0
+  and |versions_r(e')| > 0
+  Then e = E[new_region()] and e' = E[r {}]
+
+Conjecture: Safe free_region
+  If L; R; X |- e: u t
+  and e = E[free_region(r d)] and r = r' or r' is contained inside d
+  Then:
+  R(r') = linear
+  and |versions_r'(E[0])| = 0
+
+=====================================================================
