@@ -1,12 +1,14 @@
-// Copyright 2018-2021 VMware, Inc., Microsoft Inc., Carnegie Mellon University, ETH Zurich, and University of Washington
-// SPDX-License-Identifier: BSD-2-Clause
-
 #pragma once
 
 namespace LinearRegion {
   typedef struct {
     // Empty placeholder since NewRegion and FreeRegion are no-ops
   } Region;
+
+  Region get_Region_default() {
+    Region r;
+    return r;
+  }
 }
 
 namespace LinearRegionId_s {
@@ -17,6 +19,11 @@ namespace LinearRegionId_s {
 namespace LinearRegionRefCell_s {
   template <typename A>
   using RefCell = std::shared_ptr<A>;
+
+  template <typename A>
+  RefCell<A> get_RefCell_default() {
+    return nullptr;
+  }
 }
 
 namespace LinearRegionLoc_s {
@@ -76,4 +83,3 @@ namespace LinearRegion_s {
   }
 
 }
-
