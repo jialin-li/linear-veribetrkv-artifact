@@ -1,6 +1,0 @@
-// BtreeModel.i.dfy
-abstract module BtreeModel {
-  type Key = Keys.Element
-  type Value
-  datatype Node = Leaf(keys: seq<Key>, values: seq<Value>) | Index(pivots: seq<Key>, children: seq<Node>)
-}

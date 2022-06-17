@@ -1,5 +1,0 @@
-// BitmapModel.i.dfy
-module BitmapModel {
-  type BitmapModelT = seq<bool>
-}
-Dafny program verifier did not attempt verification

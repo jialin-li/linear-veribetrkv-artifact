@@ -1,7 +1,0 @@
-// LruModel.i.dfy
-module LruModel {
-    reveals *
-    reveals LruQueue, distinct, WF, I, Empty, Remove, Remove', Use, Next, NextOpt, Pop
-  type   LruQueue = seq<uint64>
-}
-Dafny program verifier did not attempt verification

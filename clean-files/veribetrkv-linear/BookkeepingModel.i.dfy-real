@@ -1,5 +1,0 @@
-// BookkeepingModel.i.dfy
-module BookkeepingModel {
-  type Node = BT.G.Node
-}
-Dafny program verifier did not attempt verification

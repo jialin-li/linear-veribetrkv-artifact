@@ -1,4 +1,0 @@
-// LruModel.i.dfy
-module LruModel {
-  type   LruQueue = seq<uint64>
-}

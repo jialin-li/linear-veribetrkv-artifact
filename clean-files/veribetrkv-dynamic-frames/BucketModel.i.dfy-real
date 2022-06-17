@@ -1,7 +1,0 @@
-// BucketModel.i.dfy
-module BucketModel {
-  datatype singleMergeResult = MergeCompleted(ghost keys: seq<Key>, ghost msgs: seq<Message>, ghost slack: nat) | SlackExhausted(ghost keys: seq<Key>, ghost msgs: seq<Message>, ghost end: nat, ghost slack: nat) {
-  }
-  datatype mergeResult = mergeResult(ghost top: Bucket, ghost bots: seq<Bucket>, ghost slack: nat)
-  datatype partialFlushResult = partialFlushResult(top: Bucket, bots: seq<Bucket>)
-}

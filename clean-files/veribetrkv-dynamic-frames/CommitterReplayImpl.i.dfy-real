@@ -1,8 +1,0 @@
-// CommitterReplayImpl.i.dfy
-module CommitterReplayImpl {
-  method JournalReplayOne(k: ImplConstants, cm: Committer)
-    modifies cm.Repr
-  {
-    cm.journalist.replayJournalPop();
-  }
-}

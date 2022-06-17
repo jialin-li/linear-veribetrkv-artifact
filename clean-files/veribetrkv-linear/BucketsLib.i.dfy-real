@@ -1,7 +1,0 @@
-// BucketsLib.i.dfy
-module BucketsLib {
-  datatype Bucket = Bucket(keys: seq<Key>, msgs: seq<Message>) {
-  }
-  type BucketList = seq<Bucket>
-}
-Dafny program verifier did not attempt verification

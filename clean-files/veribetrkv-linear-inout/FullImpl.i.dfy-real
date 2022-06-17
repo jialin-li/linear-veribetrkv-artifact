@@ -1,8 +1,0 @@
-  var Length: int  // immutable
-  static method Constructor() returns (f: Full)
-  {
-    var bc: Variables := StateBCImpl.Variables.Constructor();
-    var cm: Committer := CommitterImpl.Committer.Constructor();
-    f := Full(bc, cm);
-  }
-Dafny program verifier did not attempt verification
