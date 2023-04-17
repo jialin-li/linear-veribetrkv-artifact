@@ -32,6 +32,8 @@ RUN pip3 install strbalance
 # RUN apt-get install -y texlive texlive-pictures
 
 # install dafny 3.0 dependencies 
+RUN wget http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1-1ubuntu2.1~18.04.21_amd64.deb
+RUN dpkg -i libssl1.1_1.1.1-1ubuntu2.1~18.04.21_amd64.deb
 RUN wget https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
 RUN dpkg -i packages-microsoft-prod.deb
 RUN rm packages-microsoft-prod.deb
